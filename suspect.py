@@ -2,8 +2,10 @@ import enum
 import itertools
 
 import networkx as nx
+import random
 
 from genotype import *
+from clue import clues
 
 
 class Suspect:
@@ -15,6 +17,7 @@ class Suspect:
         self.height = get_random_height()
         self.blood_type = get_random_blood_type()
         self.hand = get_random_hand()
+        self.link = get_random_link()
 
     @property
     def identity(self):
@@ -25,7 +28,8 @@ class Suspect:
             "hair_color": self.hair_color,
             "height": self.height,
             "blood_type": self.blood_type,
-            "hand": self.hand
+            "hand": self.hand,
+            "link_to_victim": self.link
         }
 
     def __repr__(self):
@@ -33,13 +37,12 @@ class Suspect:
 
 
 class Case:
-    def __init__(self, n_suspects, seed=None):
+    def __init__(self, seed=None):
         if seed is not None:
-            import random
             random.seed(seed)
 
-        self.n_suspects = n_suspects
-        self.suspects = [Suspect() for i in range(n_suspects)]
+        self.n_suspects = random.randint(5, 10)
+        self.suspects = [Suspect() for i in range(self.n_suspects)]
         self.suspects[0].guilty = True
         self.suspect2id = {s: i for i, s in enumerate(self.suspects)}
 
@@ -47,6 +50,7 @@ class Case:
         self.get_commonalities()
         self.get_dopplegangers()
         self.get_maximum_features()
+        self.generate_clues()
 
     def __getitem__(self, key):
         return self.suspects[key]
@@ -79,6 +83,10 @@ class Case:
             return [
                 suspect for suspect in self.suspects
                 if suspect.hand == criteria]
+        elif isinstance(criteria, LinkToVictim):
+            return [
+                suspect for suspect in self.suspects
+                if suspect.link == criteria]
 
     def data(self):
         return [s.identity for s in self.suspects]
@@ -124,28 +132,30 @@ class Case:
         cm = sorted(cm.items(), key=lambda x: len(x[1]))
         cm = [(a, b) for a, b in cm if len(b) > 1]
 
-        minimum_features = []
-        r = 5
-        loop = True
+        possibilities = []
+        r = 7
         while r > 1:
             for feature_combination in itertools.combinations(cm, r):
                 inter = set()
                 n_comb = len(feature_combination)
-                for i, (feature, suspects) in enumerate(feature_combination):
+                for i, (_, suspects) in enumerate(feature_combination):
                     if i == 0:
                         inter = set(suspects)
                     else:
                         inter = inter.intersection(suspects)
                         if len(inter) == 1:
                             if n_comb - 1 == i:
-                                minimum_features.append(feature_combination)
-                                # loop = False
+                                possibilities.append(feature_combination)
                                 break
                             else:
                                 break
             r -= 1
-        # print(r + 1)
-        pprint(minimum_features)
-        if len(minimum_features) == 0:
-            print(self.dopplegangers, "dopplegangers")
-        print(len(minimum_features[0]))
+        print(self.n_suspects, "suspects")
+        self.possibilities = possibilities
+    
+    def generate_clues(self):
+        facts = self.possibilities[0]
+        for clue in clues:
+            for fact, _ in facts:
+                if isinstance(fact, clue.clue_type):
+                    print(fact, clue)

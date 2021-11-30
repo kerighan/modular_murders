@@ -9,9 +9,10 @@ class Gender(Enum):
 
 
 class EyeColor(Enum):
-    BLUE = 0
     BROWN = 1
+    BLUE = 0
     GREY = 2
+    GREEN = 3
 
 
 class HairColor(Enum):
@@ -38,7 +39,16 @@ class Hand(Enum):
     LEFT = 1
 
 
-genotypes = [Gender, HairColor, EyeColor, Height, BloodType, Height, Hand]
+class LinkToVictim(Enum):
+    SIBLING = 0
+    NEIGHBORHOOD = 1
+    COLLEAGUE = 2
+    UNKNOWN = 3
+
+
+
+genotypes = [Gender, HairColor, EyeColor, Height,
+             BloodType, Height, Hand, LinkToVictim]
 criterions = list(itertools.chain(*[
     list(genotype) for genotype in genotypes]))
 
@@ -51,7 +61,7 @@ def get_random_enum(enum, p=None):
 
 
 def get_random_eye_color():
-    return get_random_enum(EyeColor)
+    return get_random_enum(EyeColor, p=[7, 1, 1, 1])
 
 
 def get_random_hair_color():
@@ -63,7 +73,7 @@ def get_random_gender():
 
 
 def get_random_blood_type():
-    return get_random_enum(BloodType)
+    return get_random_enum(BloodType, p=[5, 5, 1])
 
 
 def get_random_height():
@@ -72,3 +82,7 @@ def get_random_height():
 
 def get_random_hand():
     return get_random_enum(Hand, p=[.8, .2])
+
+
+def get_random_link():
+    return get_random_enum(LinkToVictim, p=[.2, .6, .2, .3])

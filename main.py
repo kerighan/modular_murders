@@ -5,8 +5,7 @@ import pandas as pd
 from genotype import *
 from suspect import Case
 
-n_suspects = 6
-case = Case(n_suspects)
+case = Case()
 # print(pd.DataFrame(suspects.data()))
 
 

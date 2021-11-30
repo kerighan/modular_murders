@@ -7,32 +7,56 @@ class Clue:
         self.location = location
         self.conditions = conditions
 
+    def check_conditions(self, facts):
+        if self.conditions is None:
+            return True
+
+        for condition in self.conditions:
+            if condition in facts:
+                return True
+        return False
+
+    def __repr__(self):
+        return f"{self.clue_name}_{self.location.name}"
+
 
 class LinkClue(Clue):
     clue_type = LinkToVictim
+    clue_name = "link"
+
 
 class EyeColorClue(Clue):
     clue_type = EyeColor
+    clue_name = "eye_color"
 
 
 class HairClue(Clue):
     clue_type = HairColor
+    clue_name = "hair_color"
 
 
 class HandClue(Clue):
-    clue_type = HairColor
+    clue_type = Hand
+    clue_name = "hand"
 
 
 class GenderClue(Clue):
     clue_type = Gender
+    clue_name = "gender"
 
 
 class BloodTypeClue(Clue):
     clue_type = BloodType
+    clue_name = "blood_type"
 
 
 class HeightClue(Clue):
     clue_type = Height
+    clue_name = "height"
+
+
+class AlibiClue(Clue):
+    clue_type = Alibi
 
 
 clues = [
@@ -54,9 +78,12 @@ clues = [
     # amount of violence suggests passion
     LinkClue(location.CRIME_SCENE, [
         LinkToVictim.SIBLING]),
-    # robbery suggests victim doesn't know the killer
+    # victim writing on the wall : victim knows the killer
     LinkClue(location.CRIME_SCENE, [
-        LinkToVictim.SIBLING]),
+        LinkToVictim.SIBLING, LinkToVictim.EX]),
+    # cold blooded and robbed suggest unknown relation
+    LinkClue(location.CRIME_SCENE, [
+        LinkToVictim.NEIGHBORHOOD]),
 
     # hand revealed in a death-threat letter
     HandClue(location.VICTIM_HOUSE, [
@@ -70,8 +97,6 @@ clues = [
     HairClue(location.WITNESS),
     # hair found at the crime scene
     HairClue(location.CRIME_SCENE),
-    # hair found at the victim's house
-    HairClue(location.VICTIM_HOUSE),
     # hair color caught on CCTV
     HairClue(location.CCTV),
     # hair found under the victim's fingernails
@@ -100,5 +125,3 @@ clues = [
     # large footstep found in grass
     HeightClue(location.CRIME_SCENE),
 ]
-
-

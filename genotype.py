@@ -26,6 +26,7 @@ class BloodType(Enum):
     A = 0
     B = 1
     AB = 2
+    O = 3
 
 
 class Height(Enum):
@@ -43,8 +44,14 @@ class LinkToVictim(Enum):
     SIBLING = 0
     NEIGHBORHOOD = 1
     COLLEAGUE = 2
-    UNKNOWN = 3
+    EX = 4
+    UNKNOWN = 5
 
+
+class Alibi(Enum):
+    BAR = 0
+    POOL = 1
+    WITH_FRIENDS = 2
 
 
 genotypes = [Gender, HairColor, EyeColor, Height,
@@ -73,7 +80,7 @@ def get_random_gender():
 
 
 def get_random_blood_type():
-    return get_random_enum(BloodType, p=[5, 5, 1])
+    return get_random_enum(BloodType, p=[6, 4, 2, 1])
 
 
 def get_random_height():
@@ -85,4 +92,4 @@ def get_random_hand():
 
 
 def get_random_link():
-    return get_random_enum(LinkToVictim, p=[.2, .6, .2, .3])
+    return get_random_enum(LinkToVictim, p=[3, 5, 2, 3, 2])

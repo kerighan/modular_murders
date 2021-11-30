@@ -1,11 +1,11 @@
 import enum
 import itertools
-
-import networkx as nx
 import random
 
+import networkx as nx
+
+from clue import AlibiClue, clues
 from genotype import *
-from clue import clues
 
 
 class Suspect:
@@ -50,7 +50,7 @@ class Case:
         self.get_commonalities()
         self.get_dopplegangers()
         self.get_maximum_features()
-        self.generate_clues()
+        self.get_clues()
 
     def __getitem__(self, key):
         return self.suspects[key]
@@ -133,8 +133,10 @@ class Case:
         cm = [(a, b) for a, b in cm if len(b) > 1]
 
         possibilities = []
+        min_possibilities = None
+        min_n_possibilities = float("inf")
         r = 7
-        while r > 1:
+        while r > 2:
             for feature_combination in itertools.combinations(cm, r):
                 inter = set()
                 n_comb = len(feature_combination)
@@ -148,14 +150,48 @@ class Case:
                                 possibilities.append(feature_combination)
                                 break
                             else:
+                                possibilities.append(feature_combination[:i])
                                 break
+                if len(inter) < min_n_possibilities:
+                    min_n_possibilities = len(inter)
+                    min_possibilities = feature_combination
             r -= 1
+
+        possibilities = sorted(
+            possibilities, key=lambda x: len(x), reverse=True)
         print(self.n_suspects, "suspects")
-        self.possibilities = possibilities
-    
-    def generate_clues(self):
-        facts = self.possibilities[0]
+        if len(possibilities) == 0:
+            self.possibilities = [min_possibilities]
+        else:
+            self.possibilities = possibilities
+        pprint(self.possibilities[0])
+
+    def get_clues(self):
+        from collections import defaultdict
+
+        import pandas as pd
+        facts_and_suspects = self.possibilities[0]
+        facts = [it for it, _ in facts_and_suspects]
+        fact2clues = defaultdict(list)
         for clue in clues:
-            for fact, _ in facts:
-                if isinstance(fact, clue.clue_type):
-                    print(fact, clue)
+            for fact in facts:
+                if not isinstance(fact, clue.clue_type):
+                    continue
+
+                if clue.check_conditions(facts):
+                    fact2clues[fact].append(clue)
+
+        # generate clues and find who should have an alibi
+        generated_clues = {}
+        for i, (fact, c) in enumerate(fact2clues.items()):
+            generated_clues[fact] = random.choice(c)
+            if i == 0:
+                alibis = set(self.commonalities[fact])
+            else:
+                alibis = alibis.intersection(self.commonalities[fact])
+        alibis.remove(0)
+        if len(alibis) > 0:
+            generated_clues[Alibi.BAR] = AlibiClue
+        print(generated_clues)
+        # print(pd.DataFrame(self.data()))
+        # print(generated_clues)

@@ -13,3 +13,10 @@ class location(Enum):
     NEIGHBOR = 9
     VICTIM_HOUSE = 10
     MURDERER_HOUSE = 11
+
+
+class landmark(Enum):
+    HOSPITAL = 0
+    POLICE = 1
+    BAR = 2
+    THEATER = 3

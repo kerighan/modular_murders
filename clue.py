@@ -71,10 +71,13 @@ clues = [
 
     # link to victim revealed in a death-threat letter
     LinkClue(location.VICTIM_HOUSE, [
-        LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD]),
+        LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD, LinkToVictim.EX]),
     # link to victim revealed during a lie
     LinkClue(location.MURDERER_HOUSE, [
         LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD]),
+    # shows a troubled mind that kills strangers
+    LinkClue(location.MURDERER_HOUSE, [
+        LinkToVictim.UNKNOWN]),
     # amount of violence suggests passion
     LinkClue(location.CRIME_SCENE, [
         LinkToVictim.SIBLING]),
@@ -84,6 +87,12 @@ clues = [
     # cold blooded and robbed suggest unknown relation
     LinkClue(location.CRIME_SCENE, [
         LinkToVictim.NEIGHBORHOOD]),
+    # victim was threaten by a sibling
+    LinkClue(location.VICTIM_PHONE, [
+        LinkToVictim.SIBLING]),
+    # victim was harcelated and threaten by a coworker
+    LinkClue(location.VICTIM_PHONE, [
+        LinkToVictim.COLLEAGUE]),
 
     # hand revealed in a death-threat letter
     HandClue(location.VICTIM_HOUSE, [
@@ -117,8 +126,6 @@ clues = [
     BloodTypeClue(location.VICTIM),
     # murderer blood found on the murder weapon
     BloodTypeClue(location.MURDER_WEAPON),
-    # victim blood found on the murder weapon
-    BloodTypeClue(location.MURDERER_HOUSE),
 
     # witness saw height
     HeightClue(location.WITNESS),

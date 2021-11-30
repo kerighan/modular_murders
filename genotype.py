@@ -55,7 +55,7 @@ class Alibi(Enum):
 
 
 genotypes = [Gender, HairColor, EyeColor, Height,
-             BloodType, Height, Hand, LinkToVictim]
+             BloodType, Hand, LinkToVictim]
 criterions = list(itertools.chain(*[
     list(genotype) for genotype in genotypes]))
 
@@ -84,7 +84,7 @@ def get_random_blood_type():
 
 
 def get_random_height():
-    return get_random_enum(Height, p=[.3, .4, .3])
+    return get_random_enum(Height, p=[.3, .5, .3])
 
 
 def get_random_hand():

@@ -1,11 +1,13 @@
 import enum
 import itertools
 import random
+from pprint import pprint
 
 import networkx as nx
 
-from clue import AlibiClue, clues
+from clue import AlibiClue, clues, location
 from genotype import *
+from routine import *
 
 
 class Suspect:
@@ -51,6 +53,7 @@ class Case:
         self.get_dopplegangers()
         self.get_maximum_features()
         self.get_clues()
+        self.get_environment()
 
     def __getitem__(self, key):
         return self.suspects[key]
@@ -74,7 +77,7 @@ class Case:
         elif isinstance(criteria, Height):
             return [
                 suspect for suspect in self.suspects
-                if suspect.blood_type == criteria]
+                if suspect.height == criteria]
         elif isinstance(criteria, BloodType):
             return [
                 suspect for suspect in self.suspects
@@ -126,8 +129,6 @@ class Case:
         return inter
 
     def get_maximum_features(self):
-        from pprint import pprint
-
         cm = self.commonalities
         cm = sorted(cm.items(), key=lambda x: len(x[1]))
         cm = [(a, b) for a, b in cm if len(b) > 1]
@@ -169,7 +170,6 @@ class Case:
     def get_clues(self):
         from collections import defaultdict
 
-        import pandas as pd
         facts_and_suspects = self.possibilities[0]
         facts = [it for it, _ in facts_and_suspects]
         fact2clues = defaultdict(list)
@@ -192,6 +192,85 @@ class Case:
         alibis.remove(0)
         if len(alibis) > 0:
             generated_clues[Alibi.BAR] = AlibiClue
-        print(generated_clues)
-        # print(pd.DataFrame(self.data()))
-        # print(generated_clues)
+        self.clues = generated_clues
+        print(self.clues)
+
+    def get_environment(self):
+        environment = {}
+        murder_weapon = False
+        can_inspect_murder_weapon = False
+
+        victim_phone = False
+        can_inspect_victim_phone = False
+
+        can_inspect_victim_house = False
+
+        can_inspect_houses = [False] * self.n_suspects
+
+        cctv = False
+        can_inspect_cctv = False
+
+        neighbor = False
+        can_inspect_neighbor = False
+
+        for clue in self.clues.values():
+            if not hasattr(clue, "location"):
+                continue
+            if clue.location == location.MURDER_WEAPON:
+                murder_weapon = True
+                can_inspect_murder_weapon = True
+            elif clue.location == location.VICTIM_PHONE:
+                victim_phone = True
+                can_inspect_victim_phone = True
+            elif clue.location == location.MURDERER_HOUSE:
+                can_inspect_houses[0] = True
+            elif clue.location == location.CCTV:
+                cctv = True
+                can_inspect_cctv = True
+            elif clue.location == location.NEIGHBOR:
+                neighbor = True
+                can_inspect_neighbor = True
+
+        # randomly reopopulate
+        for i in range(1, self.n_suspects):
+            can_inspect_houses[i] = p(.33)
+        if not cctv:
+            cctv = p(.33)
+        if not victim_phone:
+            victim_phone = p(.15)
+        if not neighbor:
+            neighbor = p(.15)
+
+        if victim_phone:
+            environment["victim_phone_routine"] =   \
+                get_random_victim_phone_routine()
+            environment["victim_phone_lock_routine"] =   \
+                get_random_victim_phone_lock_routine()
+            if environment["victim_phone_lock_routine"] !=  \
+                    VictimPhoneLockRoutine.UNLOCK:
+                can_inspect_victim_house = True
+        if murder_weapon:
+            environment["murder_weapon_routine"] =  \
+                get_random_murder_weapon_routine()
+
+        # murder weapon
+        environment["murder_weapon"] = murder_weapon
+        environment["can_inspect_murder_weapon"] = can_inspect_murder_weapon
+        # victim phone
+        environment["victim_phone"] = victim_phone
+        environment["can_inspect_victim_phone"] = can_inspect_victim_phone
+        environment["can_inspect_victim_house"] = can_inspect_victim_house
+        # suspects house
+        environment["can_inspect_houses"] = can_inspect_houses
+        # cctv
+        environment["cctv"] = cctv
+        environment["can_inspect_cctv"] = can_inspect_cctv
+        # neighbor
+        environment["neighbor"] = neighbor
+        environment["can_inspect_neighbor"] = can_inspect_neighbor
+
+        pprint(environment)
+
+
+def p(threshold):
+    return random.random() < threshold

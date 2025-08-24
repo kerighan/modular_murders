@@ -302,6 +302,9 @@ class Case:
         environment["can_inspect_neighbor"] = can_inspect_neighbor
 
         pprint(environment)
+        # Expose the generated environment for external use and return it.
+        self.environment = environment
+        return environment
 
 
 def p(threshold):

@@ -1,7 +1,11 @@
+"""Enumerations describing key locations in the investigation."""
+
 from enum import Enum
 
 
 class location(Enum):
+    """Places where evidence or characters can be found."""
+
     CRIME_SCENE = 0
     HOSPITAL = 1
     POLICE = 2
@@ -16,6 +20,8 @@ class location(Enum):
 
 
 class landmark(Enum):
+    """General landmarks that may appear on the map."""
+
     HOSPITAL = 0
     POLICE = 1
     BAR = 2

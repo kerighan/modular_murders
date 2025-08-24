@@ -1,18 +1,38 @@
-from genotype import *
-from modality import *
+"""Clue objects relating evidence locations to suspect traits."""
+
+from genotype import (
+    Alibi,
+    BloodType,
+    EyeColor,
+    Gender,
+    HairColor,
+    Hand,
+    Height,
+    LinkToVictim,
+)
+from modality import location
 
 
 class Clue:
+    """Base class for all clues.
+
+    Each clue has a ``location`` describing where it was found and optional
+    ``conditions`` restricting when the clue is valid.
+    """
+
     def __init__(self, location, conditions=None):
         self.location = location
         self.conditions = conditions
 
     def check_conditions(self, facts):
+        """Return ``True`` if this clue is compatible with the given facts."""
+
         if self.conditions is None:
             return True
 
         for condition in self.conditions:
             if condition in facts:
+                # One satisfied condition is enough to validate the clue.
                 return True
         return False
 
@@ -21,41 +41,57 @@ class Clue:
 
 
 class LinkClue(Clue):
+    """Clue describing the relationship between suspect and victim."""
+
     clue_type = LinkToVictim
     clue_name = "link"
 
 
 class EyeColorClue(Clue):
+    """Clue revealing the eye colour of the suspect."""
+
     clue_type = EyeColor
     clue_name = "eye_color"
 
 
 class HairClue(Clue):
+    """Clue revealing hair colour."""
+
     clue_type = HairColor
     clue_name = "hair_color"
 
 
 class HandClue(Clue):
+    """Clue revealing dominant hand."""
+
     clue_type = Hand
     clue_name = "hand"
 
 
 class GenderClue(Clue):
+    """Clue revealing gender."""
+
     clue_type = Gender
     clue_name = "gender"
 
 
 class BloodTypeClue(Clue):
+    """Clue revealing blood type."""
+
     clue_type = BloodType
     clue_name = "blood_type"
 
 
 class HeightClue(Clue):
+    """Clue revealing rough height."""
+
     clue_type = Height
     clue_name = "height"
 
 
 class AlibiClue(Clue):
+    """Special clue representing an alibi offered by a suspect."""
+
     clue_type = Alibi
 
 

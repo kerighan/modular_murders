@@ -1,17 +1,13 @@
-"""Simple entry point that constructs a case for manual experimentation."""
+"""Generate a case and print it. Usage: python main.py [seed]"""
 
-import matplotlib.pyplot as plt
-import networkx as nx
-import pandas as pd
+import sys
+from pprint import pprint
 
 from suspect import Case
 
-case = Case()
-# The following lines are handy for manual debugging and exploration.
-# print(pd.DataFrame(suspects.data()))
-
-
-# G = suspects.to_graph()
-# suspects.draw()
-
-# index 0 is always murderer
+case = Case(seed=int(sys.argv[1]) if len(sys.argv) > 1 else None)
+print(f"{case.n_suspects} suspects, murderer is #0: {case.murderer}")
+print("clues:", case.clues)
+print("alibis:", case.alibis)
+pprint(case.environment)
+# case.draw()  # traits -> suspects graph, needs matplotlib

@@ -1,170 +1,99 @@
-"""Clue objects relating evidence locations to suspect traits."""
+"""Clues: a piece of evidence, found somewhere, that reveals one trait of the murderer."""
 
-from genotype import (
-    Alibi,
-    BloodType,
-    EyeColor,
-    Gender,
-    HairColor,
-    Hand,
-    Height,
-    LinkToVictim,
-)
-from modality import location
+from genotype import BloodType, EyeColor, Gender, HairColor, Hand, Height, LinkToVictim
+from modality import Location
 
 
 class Clue:
-    """Base class for all clues.
+    """Evidence at `location` revealing the murderer's value for `trait`.
 
-    Each clue has a ``location`` describing where it was found and optional
-    ``conditions`` restricting when the clue is valid.
+    `text` is what the player reads on finding it. `conditions` restricts the clue to
+    cases where one of these facts is also revealed (a death-threat letter makes no
+    sense if the killer is a stranger).
     """
 
-    def __init__(self, location, conditions=None):
-        self.location = location
-        self.conditions = conditions
+    trait = None
+    name = "clue"
 
-    def check_conditions(self, facts):
-        """Return ``True`` if this clue is compatible with the given facts."""
+    def __init__(self, location, text, conditions=None):
+        self.location, self.text, self.conditions = location, text, conditions
 
-        if self.conditions is None:
-            return True
-
-        for condition in self.conditions:
-            if condition in facts:
-                # One satisfied condition is enough to validate the clue.
-                return True
-        return False
+    def is_consistent(self, facts):
+        """True if the clue can exist alongside the revealed `facts`."""
+        return self.conditions is None or any(c in facts for c in self.conditions)
 
     def __repr__(self):
-        return f"{self.clue_name}_{self.location.name}"
+        return f"{self.name}_{self.location.name}"
 
 
 class LinkClue(Clue):
-    """Clue describing the relationship between suspect and victim."""
-
-    clue_type = LinkToVictim
-    clue_name = "link"
+    trait, name = LinkToVictim, "link"
 
 
 class EyeColorClue(Clue):
-    """Clue revealing the eye colour of the suspect."""
-
-    clue_type = EyeColor
-    clue_name = "eye_color"
+    trait, name = EyeColor, "eye_color"
 
 
 class HairClue(Clue):
-    """Clue revealing hair colour."""
-
-    clue_type = HairColor
-    clue_name = "hair_color"
+    trait, name = HairColor, "hair_color"
 
 
 class HandClue(Clue):
-    """Clue revealing dominant hand."""
-
-    clue_type = Hand
-    clue_name = "hand"
+    trait, name = Hand, "hand"
 
 
 class GenderClue(Clue):
-    """Clue revealing gender."""
-
-    clue_type = Gender
-    clue_name = "gender"
+    trait, name = Gender, "gender"
 
 
 class BloodTypeClue(Clue):
-    """Clue revealing blood type."""
-
-    clue_type = BloodType
-    clue_name = "blood_type"
+    trait, name = BloodType, "blood_type"
 
 
 class HeightClue(Clue):
-    """Clue revealing rough height."""
-
-    clue_type = Height
-    clue_name = "height"
+    trait, name = Height, "height"
 
 
-class AlibiClue(Clue):
-    """Special clue representing an alibi offered by a suspect."""
+KNOWN = [LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD]
 
-    clue_type = Alibi
+CLUES = [
+    GenderClue(Location.WITNESS, "J'ai croisé quelqu'un qui sortait en courant de chez la victime."),
+    GenderClue(Location.NEIGHBOR, "J'ai entendu une dispute à travers le mur, et une voix."),
+    GenderClue(Location.CCTV, "Une silhouette passe devant la caméra, capuche relevée, mais la démarche ne trompe pas."),
+    GenderClue(Location.VICTIM_PHONE, "Un message vocal menaçant est resté sur le répondeur."),
 
+    LinkClue(Location.VICTIM_HOUSE, "Une lettre de menace glissée sous la porte : son auteur connaissait bien la victime.",
+             KNOWN + [LinkToVictim.EX]),
+    LinkClue(Location.MURDERER_HOUSE, "Un carnet où quelqu'un s'est inventé une autre vie. Un mensonge soigneusement entretenu.", KNOWN),
+    LinkClue(Location.MURDERER_HOUSE, "Des coupures de presse, des photos volées d'inconnus. Un esprit qui s'en prend à des étrangers.",
+             [LinkToVictim.UNKNOWN]),
+    LinkClue(Location.CRIME_SCENE, "Une violence démesurée. On ne frappe pas comme ça un inconnu : c'est une affaire de famille.",
+             [LinkToVictim.SIBLING]),
+    LinkClue(Location.CRIME_SCENE, "La victime a écrit quelque chose au mur en mourant : elle connaissait son agresseur.",
+             [LinkToVictim.SIBLING, LinkToVictim.EX]),
+    LinkClue(Location.CRIME_SCENE, "Un coup froid, la maison fouillée, les objets de valeur envolés. Quelqu'un du quartier.",
+             [LinkToVictim.NEIGHBORHOOD]),
+    LinkClue(Location.VICTIM_PHONE, "Des SMS de menace, signés d'un membre de la famille.", [LinkToVictim.SIBLING]),
+    LinkClue(Location.VICTIM_PHONE, "Des mails de harcèlement, envoyés depuis le travail de la victime.", [LinkToVictim.COLLEAGUE]),
 
-clues = [
-    # witness saw gender
-    GenderClue(location.WITNESS),
-    # neighbors heard screams (gender)
-    GenderClue(location.NEIGHBOR),
-    # gender caught on CCTV
-    GenderClue(location.CCTV),
-    # gender caught on phone
-    GenderClue(location.VICTIM_PHONE),
+    HandClue(Location.VICTIM_HOUSE, "La lettre de menace est écrite à la main : l'inclinaison des lettres trahit son auteur.", KNOWN),
+    HandClue(Location.MURDER_WEAPON, "La prise sur le manche, l'angle du coup : on devine la main qui a tenu l'arme."),
+    HandClue(Location.WITNESS, "J'ai vu l'arme, et la main qui la tenait."),
 
-    # link to victim revealed in a death-threat letter
-    LinkClue(location.VICTIM_HOUSE, [
-        LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD, LinkToVictim.EX]),
-    # link to victim revealed during a lie
-    LinkClue(location.MURDERER_HOUSE, [
-        LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD]),
-    # shows a troubled mind that kills strangers
-    LinkClue(location.MURDERER_HOUSE, [
-        LinkToVictim.UNKNOWN]),
-    # amount of violence suggests passion
-    LinkClue(location.CRIME_SCENE, [
-        LinkToVictim.SIBLING]),
-    # victim writing on the wall : victim knows the killer
-    LinkClue(location.CRIME_SCENE, [
-        LinkToVictim.SIBLING, LinkToVictim.EX]),
-    # cold blooded and robbed suggest unknown relation
-    LinkClue(location.CRIME_SCENE, [
-        LinkToVictim.NEIGHBORHOOD]),
-    # victim was threaten by a sibling
-    LinkClue(location.VICTIM_PHONE, [
-        LinkToVictim.SIBLING]),
-    # victim was harcelated and threaten by a coworker
-    LinkClue(location.VICTIM_PHONE, [
-        LinkToVictim.COLLEAGUE]),
+    HairClue(Location.WITNESS, "Je me souviens surtout de la chevelure."),
+    HairClue(Location.CRIME_SCENE, "Un cheveu accroché au montant de la porte. Ce n'est pas celui de la victime."),
+    HairClue(Location.CCTV, "Sur l'enregistrement, la lumière du lampadaire accroche une chevelure."),
+    HairClue(Location.VICTIM, "Le légiste a trouvé un cheveu sous les ongles de la victime."),
+    HairClue(Location.MURDER_WEAPON, "Un cheveu collé sur le manche de l'arme."),
+    HairClue(Location.VICTIM_PHONE, "Une photo prise par la victime quelques heures avant : quelqu'un de dos, les cheveux bien visibles."),
 
-    # hand revealed in a death-threat letter
-    HandClue(location.VICTIM_HOUSE, [
-        LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD]),
-    # hand revealed in a death-threat letter
-    HandClue(location.MURDER_WEAPON),
-    # witness saw hand
-    HandClue(location.WITNESS),
+    EyeColorClue(Location.WITNESS, "J'ai croisé un regard que je n'oublierai pas."),
+    EyeColorClue(Location.VICTIM_PHONE, "Une photo sur le téléphone, prise de très près. Un regard."),
 
-    # witness saw hair color
-    HairClue(location.WITNESS),
-    # hair found at the crime scene
-    HairClue(location.CRIME_SCENE),
-    # hair color caught on CCTV
-    HairClue(location.CCTV),
-    # hair found under the victim's fingernails
-    HairClue(location.VICTIM),
-    # hair found on the murder weapon
-    HairClue(location.MURDER_WEAPON),
-    # hair color caught on phone
-    HairClue(location.VICTIM_PHONE),
+    BloodTypeClue(Location.CRIME_SCENE, "La victime s'est défendue. Du sang sur la clôture, qui ne semble pas lui appartenir."),
+    BloodTypeClue(Location.VICTIM, "Du sang sous les ongles de la victime : elle a griffé son agresseur."),
+    BloodTypeClue(Location.MURDER_WEAPON, "Du sang sur l'arme, là où la main a glissé. Ce n'est pas celui de la victime."),
 
-    # witness saw eye color
-    EyeColorClue(location.WITNESS),
-    # eye color caught on phone
-    EyeColorClue(location.VICTIM_PHONE),
-
-    # murderer blood found at the crime scene (UV light, fences)
-    BloodTypeClue(location.CRIME_SCENE),
-    # murderer blood found under the victim's fingernails
-    BloodTypeClue(location.VICTIM),
-    # murderer blood found on the murder weapon
-    BloodTypeClue(location.MURDER_WEAPON),
-
-    # witness saw height
-    HeightClue(location.WITNESS),
-    # large footstep found in grass
-    HeightClue(location.CRIME_SCENE),
+    HeightClue(Location.WITNESS, "Je me souviens d'une silhouette, de loin."),
+    HeightClue(Location.CRIME_SCENE, "Une empreinte de pas dans l'herbe, sous la fenêtre."),
 ]

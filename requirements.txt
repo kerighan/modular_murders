@@ -1,0 +1,7 @@
+networkx
+loom
+pytest
+# characters voiced by an LLM (private lib, optional)
+# aiquery
+# optional, only for Case.draw()
+matplotlib

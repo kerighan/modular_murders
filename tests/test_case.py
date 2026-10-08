@@ -1,69 +1,63 @@
-import io
-import os
-import sys
+import pytest
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
+from clue import CLUES
+from genotype import TRAITS, criterions
+from modality import Location
 from suspect import Case
-from clue import AlibiClue
-from genotype import (
-    Gender,
-    EyeColor,
-    HairColor,
-    Height,
-    BloodType,
-    Hand,
-    LinkToVictim,
-)
-from modality import location
 
-trait_map = {
-    Gender: "gender",
-    EyeColor: "eye_color",
-    HairColor: "hair_color",
-    Height: "height",
-    BloodType: "blood_type",
-    Hand: "hand",
-    LinkToVictim: "link",
-}
+SEEDS = range(200)
 
 
-def test_generated_clues_isolate_murderer():
-    case = Case(seed=0)
-    suspects = list(range(len(case.suspects)))
-    for fact, clue_cls in case.clues.items():
-        if clue_cls is AlibiClue:
-            continue
-        attr = trait_map[clue_cls.clue_type]
-        suspects = [i for i in suspects if getattr(case[i], attr) == fact]
-    assert suspects == [0]
+def matching(case):
+    """Suspects compatible with every clue."""
+    return {i for i, s in enumerate(case.suspects) if all(s[type(f)] == f for f in case.clues)}
 
 
-def test_environment_flags_follow_clues():
-    for seed in range(3):
-        case = Case(seed=seed)
-        env = case.environment
-        clue_locs = [c.location for c in case.clues.values() if hasattr(c, "location")]
-        mapping = {
-            location.MURDER_WEAPON: "can_inspect_murder_weapon",
-            location.VICTIM_PHONE: "can_inspect_victim_phone",
-            location.CCTV: "can_inspect_cctv",
-            location.NEIGHBOR: "can_inspect_neighbor",
-        }
-        for loc, key in mapping.items():
-            if loc in clue_locs:
-                assert env[key] is True
-            else:
-                assert env[key] is False
-        if location.MURDERER_HOUSE in clue_locs:
-            assert env["can_inspect_houses"][0] is True
-        else:
-            assert env["can_inspect_houses"][0] is False
+@pytest.mark.parametrize("seed", SEEDS)
+def test_clues_and_alibis_isolate_murderer(seed):
+    case = Case(seed=seed)
+    assert 0 not in case.alibis
+    assert matching(case) - set(case.alibis) == {0}
 
 
-def test_seed_yields_deterministic_suspects():
-    case1 = Case(seed=123)
-    case2 = Case(seed=123)
-    profiles1 = [s.identity for s in case1.suspects]
-    profiles2 = [s.identity for s in case2.suspects]
-    assert profiles1 == profiles2
+@pytest.mark.parametrize("seed", SEEDS)
+def test_facts_are_minimal_unless_dopplegangers(seed):
+    case = Case(seed=seed)
+    if case.dopplegangers:
+        assert set(case.alibis) == case.dopplegangers
+    else:
+        assert not case.alibis
+        for fact in case.facts:
+            assert case.remaining([f for f in case.facts if f != fact]) != {0}
+
+
+def test_every_trait_value_has_a_consistent_clue():
+    for value in criterions:
+        assert any(isinstance(value, c.trait) and c.is_consistent([value]) for c in CLUES), value
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_environment_flags_follow_clues(seed):
+    case = Case(seed=seed)
+    env, where = case.environment, {c.location for c in case.clues.values()}
+    assert env["can_inspect_murder_weapon"] is (Location.MURDER_WEAPON in where)
+    assert env["can_inspect_victim_phone"] is (Location.VICTIM_PHONE in where)
+    assert env["can_inspect_cctv"] is (Location.CCTV in where)
+    assert env["can_inspect_neighbor"] is (Location.NEIGHBOR in where)
+    assert env["can_inspect_houses"][0] is (Location.MURDERER_HOUSE in where)
+    assert len(env["can_inspect_houses"]) == case.n_suspects
+    assert ("victim_phone_lock_routine" in env) is env["victim_phone"]
+    assert ("murder_weapon_routine" in env) is env["murder_weapon"]
+
+
+def test_seed_is_deterministic():
+    a, b = Case(seed=123), Case(seed=123)
+    assert [s.identity for s in a.suspects] == [s.identity for s in b.suspects]
+    assert a.clues.keys() == b.clues.keys() and a.environment == b.environment
+
+
+def test_suspect_count_and_identity():
+    case = Case(seed=1, n_suspects=3)
+    assert case.n_suspects == len(case.suspects) == 3
+    assert case.murderer.guilty and not any(s.guilty for s in case.suspects[1:])
+    assert set(case.murderer.identity) == {"guilty", *(attr for attr, _ in TRAITS.values())}

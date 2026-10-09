@@ -5,7 +5,8 @@ from aiquery import ask_model
 from city import TRAIT_TEXT
 
 MODEL, PROVIDER = "gpt-6-luna", "openai"
-SYSTEM = """Tu écris les répliques d'un personnage dans un jeu d'enquête, ambiance polar urbain sous la pluie.
+SYSTEM = """Tu écris les répliques d'un personnage dans un jeu d'enquête, ambiance néon noir : une ville sous la pluie,
+des enseignes qui grésillent, un bar mal famé, un tripot, un cabaret, et un détective en trench qui pose des questions.
 Tu reçois sa fiche, la conversation en cours, la question du détective et le contenu exact de sa réponse.
 Tu réécris ce contenu en une ou deux phrases, à la première personne, en français parlé, dans le caractère du personnage.
 Règles :

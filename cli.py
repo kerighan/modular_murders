@@ -8,9 +8,8 @@ import time
 
 from collections import Counter
 
-from city import GRID, STREETS, TRAIT_LABELS, TRAIT_TEXT, fact_label
+from city import TRAIT_LABELS
 from game import AP, ITEMS, Game
-from genotype import TRAITS
 from store import Store
 
 try:
@@ -21,7 +20,7 @@ except ImportError:  # no aiquery: characters answer with the plain template
 COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 STYLES = [  # (line prefix, ANSI code)
     ("Indice", "1;32"), ("Témoignage noté", "32"), ("Noté", "32"), ("Vous êtes", "1;36"), ("Vous trouvez", "33"), ("Vous remarquez", "35"), ("C'est chez", "35"),
-    ("Il y a", "35"), ("⚡", "1;33"), ("—", "1"), ("📰", "1;35"), ("Réussi", "32"), ("Raté", "31"),
+    ("Il y a", "35"), ("⚡", "1;33"), ("—", "1"), ("📰", "1;35"), ("🔔", "1;36"), ("Réussi", "32"), ("Raté", "31"),
 ]
 
 
@@ -32,8 +31,8 @@ def paint(text, code=None):
     return f"\033[{code}m{text}\033[0m" if code else text
 
 
-BOX_STARTS = ("Vous trouvez", "Le labo", "Le code", "Le kit de hacking", "Vous sortez le kit")
-BOX_ENDS = ("D'autres choses", "Vous avez fait le tour")
+BOX_STARTS = ("Vous trouvez", "Vous examinez", "Vous visionnez", "Votre échantillon", "Le code", "Le kit de hacking", "Vous sortez le kit", "Le téléphone s'ouvre", "Dossier de la victime")
+BOX_ENDS = ("D'autres choses", "Vous avez fait le tour", "Vous êtes", "Vous remarquez", "Vous reconnaissez", "Il y a", "Dans les papiers", "Chez ", "Fenêtres")
 
 
 def box(lines, width=72):
@@ -55,11 +54,8 @@ def say(events):
     for e in events:
         if e.startswith("— Tour"):
             print(paint(f"\n{'═' * 40}\n  {e.strip('— .')}\n{'═' * 40}", "1;33"))
-        elif e.startswith(BOX_STARTS) or (block and not e.startswith(BOX_ENDS)):
+        elif e.startswith(BOX_STARTS) or " a déposé un échantillon" in e or (block and not e.startswith(BOX_ENDS)):
             block.append(e)
-            if e.startswith("Indice"):
-                box(block)
-                block = []
         else:
             if block:
                 box(block)
@@ -89,114 +85,161 @@ def pick(options, n=1):
 
 
 def challenge(kind, difficulty):
+    """Type the word: fast is a perfect score, in time a good one, a bit late a poor one."""
     word, limit = random.choice(WORDS), 4 - 3 * difficulty
-    print(paint(f"⚡ {kind.capitalize()} : tapez « {word} » en moins de {limit:.1f}s"))
+    print(paint(f"⚡ {kind.capitalize()} : tapez « {word} » en moins de {limit:.1f}s (deux fois plus vite pour briller)"))
     t = time.time()
-    ok = input("> ").strip().lower() == word and time.time() - t <= limit
-    print(paint("Réussi !" if ok else "Raté."))
-    return ok
+    typed = input("> ").strip().lower() == word
+    elapsed = time.time() - t
+    score = 0 if not typed else 1.0 if elapsed <= limit / 2 else .6 if elapsed <= limit else .25 if elapsed <= 1.5 * limit else 0
+    print(paint({1.0: "Parfait !", .6: "Réussi.", .25: "Un peu tard.", 0: "Raté."}[score], "32" if score >= .6 else "31"))
+    return score
 
 
 W = 24  # map cell width
 
 
-def ascii_map(game, p):
-    """The grid of streets, the player's cell in brackets, houses counted per street."""
-    street = p.place if p.place in STREETS else game.map[p.place][1][0]
-    houses = Counter(game.map[h][1][0] for h in game.map if h.startswith("house_"))
-    glance = game.glance(p)
+def ascii_map(v):
+    """The grid of streets, the player's cell in brackets, apartments counted per street."""
+    places = v["places"]
+    street = places[v["place"]]["street"] or v["place"]
+    houses = Counter(q["street"] for q in places.values() if q["street"])
 
     def cell(q):
         if not q:
             return " " * W
-        if q == street and p.place != street:  # inside a house: just its name
-            return f"{f'[{game.place_label(p, p.place)}]':^{W}}"
-        label = game.label(q)
-        people, lit = glance.get(q, (0, None))
+        if q == street and v["place"] != street:  # inside an apartment: just its name
+            return f"{'[' + places[v['place']]['label'] + ']':^{W}}"
+        label = places[q]["label"]
+        people, lit = v["glance"].get(q, (0, None))
         if houses[q]:
             label += f" ⌂{houses[q]}" if lit is None else f" ⌂{lit}/{houses[q]}"
         if people:
             label += " " + ("●" * people if people <= 3 else f"●×{people}")
+        if places[q]["searched"]:
+            label += " ✓"
         return f"{f'[{label}]' if q == street else label:^{W}}"
 
-    lines = []
-    for r, row in enumerate(GRID):
+    grid, lines = v["grid"], []
+    for r, row in enumerate(grid):
         lines.append("".join(cell(q) + ("──" if q and c + 1 < len(row) and row[c + 1] else "  ") for c, q in enumerate(row)))
-        if r + 1 < len(GRID):
-            lines.append("".join(" " * (W // 2) + ("│" if q and GRID[r + 1][c] else " ") + " " * (W - W // 2 + 1) for c, q in enumerate(row)))
+        if r + 1 < len(grid):
+            lines.append("".join(" " * (W // 2) + ("│" if q and grid[r + 1][c] else " ") + " " * (W - W // 2 + 1) for c, q in enumerate(row)))
     return "\n".join(lines)
 
 
-def notebook(game, p):
-    certain, _ = game.deduce(p)
-    facts = ", ".join(fact_label(f) for f in p.facts) or "aucune pour l'instant"
-    trusted = ", ".join(fact_label(f) for f in certain - p.facts)
-    print(f"\nPreuves : {facts}" + (f"\nTémoignages fiables : {trusted}" if trusted else ""))
-    cols = list(TRAITS)
-    print(f"      {'suspect':<10}" + "".join(f"{TRAIT_LABELS[t]:<10}" for t in cols))
-    for r in game.notebook(p):
-        cells = "".join(f"{TRAIT_TEXT[r['traits'][t]] if t in r['traits'] else '?':<10}" for t in cols)
+def notebook(v):
+    facts = ", ".join(v["facts"]) or "aucune pour l'instant"
+    print(f"\nPreuves : {facts}" + (f"\nTémoignages fiables : {', '.join(v['trusted'])}" if v["trusted"] else ""))
+    cols = list(TRAIT_LABELS.values())
+    print(f"      {'suspect':<10}" + "".join(f"{c:<10}" for c in cols) + "│ ce qu'on sait d'autre")
+    for r in v["notebook"]:
+        cells = "".join(f"{r['traits'].get(c, '?'):<10}" for c in cols)
         notes = []
+        if r.get("home"):
+            notes.append(f"domicile : {r['home']['region_label']} · {r['home']['label']}")
+        if r.get("life"):
+            notes.append(f"projet : {r['life']['goal']} · pression : {r['life']['pressure']}")
+        if r.get("relationship"):
+            rel = r["relationship"]
+            if rel["claim"] is not None:
+                notes.append(f"lien déclaré : {rel['claim']}")
+            if rel["witnesses"]:
+                notes.append(f"selon {', '.join(rel['witnesses'])} : {rel['reported']}" + (" · CONTRADICTION" if rel["contradiction"] else ""))
         if r["claim"]:
-            status = {True: "confirmé", False: "à vérifier", None: "invérifiable"}[r["alibi"]]
-            notes.append(f"{r['claim']}" + (f" avec {', '.join(r['with'])}…" if r["with"] else "") + f" ({status})")
+            notes.append(f"alibi : {r['claim']}" + (f" avec {', '.join(r['with'])}…" if r["with"] else "") + f" ({r['alibi']})")
         if r["said"]:
-            notes.append("dit : " + ", ".join(fact_label(f) for f in r["said"]))
-        row = f"  {'xx' if r['out'] else '  '}  {r['name']:<10}{cells}" + "  |  ".join(notes)
+            notes.append("a vu : " + ", ".join(r["said"]))
+        row = f"  {'xx' if r['out'] else '  '}  {r['name']:<10}{cells}│ " + "  ·  ".join(notes)
         print(paint(row, "2") if r["out"] else row)
     print()
 
 
 def main(argv):
-    store = Store()
+    store = Store(os.environ.get("NEXUS_SAVE", "murders.loom"))
+    try:
+        _play(argv, store)
+    finally:
+        store.close()
+
+
+def _play(argv, store):
+    compact = "--compact" in argv
+    voice = None if "--offline" in argv else speak
+    qte = (lambda *_: 1.0) if "--perfect" in argv else challenge
+    argv = [arg for arg in argv if arg not in ("--offline", "--perfect", "--compact")]
     if argv[:1] == ["--resume"]:
         seed = int(argv[1])
-        game = store.load(str(seed), challenge, speak)
-        events = game.arrive(game.player)
+        game = store.load(str(seed), qte, voice)
+        events = game.resume()
     else:
         seed = int(argv[0]) if argv else random.randrange(10**6)
-        game = Game(seed, challenge=challenge, speak=speak)
+        game = Game(seed, challenge=qte, speak=voice)
         print(f"Partie {seed}. Choisissez 2 objets :")
-        game.equip(0, pick(ITEMS, n=2))
+        items = pick(ITEMS, n=2)
+        print("Point de départ :")
+        start = pick({place: game.label(place) for place in game.starts(items)})[0]
+        game.equip(0, items, start)
         events = game.start()
-    print(f"\n{game.n} suspects. Vous commencez devant la scène de crime. Sur la carte : ● une personne dans la rue, ⌂2/5 deux maisons éclairées sur cinq, visible alentour seulement.\n")
+        store.save(str(seed), game)
+    print(f"\n{game.n} suspects. Sur la carte : ● une personne sur place, ⌂2/5 deux appartements éclairés sur cinq.\n")
 
-    shown = 0
-    while not game.winner:
+    while True:
         say(events)
-        p = game.player
-        for _, author, text in game.log[shown:]:
-            if author != p.name:  # what the others did, public knowledge
-                print(paint(f"📰 {text}"))
-        shown = len(game.log)
-        print("\n" + ascii_map(game, p))
-        print(paint(f"\n[{p.name}, tour {game.tick + 1}, {p.ap}/{AP} PA]", "1"))
-        options = game.options()
-        taxi = {k: v for k, v in options.items() if v.startswith("Taxi")}
+        v = game.view(game.player)
+        if v["winner"]:
+            break
+        if not compact:
+            print("\n" + ascii_map(v))
+        pr = v["progress"]
+        print(paint(f"\n[{v['player']}, tour {v['tick'] + 1}, {v['ap']}/{AP} PA · {pr['preuves']} preuves · {pr['documents']} documents · "
+                    f"{pr['identifiés']} identifiés · {pr['écartés']} écartés, {pr['restants']} restants]", "1"))
+        if len(v["scoreboard"]) > 1:
+            print(paint("Tableau : " + "  ".join(f"{q['name']}: {q['preuves']} preuves, {q['écartés']} écartés" for q in v["scoreboard"]), "2"))
+        options = dict(v["options"])
+        taxi = {k: label for k, label in options.items() if label.startswith("Taxi")}
         keys = [k for k in options if k not in taxi]
         for i, k in enumerate(keys, 1):
             print(f"  {paint(str(i), '1')}. {options[k]}")
         if taxi:
             print("  t. Taxi…")
-        print("  c. Carnet (gratuit)")
+        print("  c. Carnet · n. Notes · q. Sauvegarder et quitter")
+        if v["can_try_code"]:
+            print("  k. Essayer un code de votre choix (1 PA)")
         answer = input("> ").strip().lower()
         if answer == "c":
-            notebook(game, p)
+            notebook(v)
             events = []
             continue
-        if answer == "t" and taxi:
-            events = game.play(pick(taxi)[0])
+        if answer == "n":
+            journal(v)
+            events = []
+            continue
+        if answer == "q":
             store.save(str(seed), game)
-            continue
-        try:
-            key = keys[int(answer) - 1]
-        except (ValueError, IndexError):
-            events = []
-            continue
+            print("Affaire sauvegardée. Reprise : --resume " + str(seed))
+            return
+        if answer == "k" and v["can_try_code"]:
+            key = ("try_code", input("code > ").strip())
+        elif answer == "t" and taxi:
+            key = pick(taxi)[0]
+        else:
+            try:
+                key = keys[int(answer) - 1]
+            except (ValueError, IndexError):
+                events = []
+                continue
         events = game.play(key)
         store.save(str(seed), game)
-    say(events)
-    store.close()
+
+
+def journal(v):
+    print("\nNOTES DE L'AFFAIRE")
+    for note in v.get("journal", []):
+        print(f"\n[Tour {note['turn']} · {note['kind']} · {note['source']}] {note['title']}")
+        print(note["text"])
+        for place in note["leads"]:
+            print("  → " + v["places"][place]["label"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,64 @@
+plugins {
+    id 'com.android.application'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace 'fr.nexuscity.solo'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'fr.nexuscity.solo'
+        minSdk 24
+        targetSdk 35
+        versionCode 9
+        versionName '0.9-solo'
+        ndk { abiFilters.addAll((project.findProperty('nexusAbis') ?: 'arm64-v8a').split(',')) }
+    }
+    sourceSets.main.assets.srcDir layout.buildDirectory.dir('nexusAssets')
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging {
+        // Smaller sideload download; Android extracts libraries at installation.
+        jniLibs { useLegacyPackaging = true }
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = '3.13'
+        buildPython System.getenv('NEXUS_PYTHON') ?: 'python3.13'
+        pyc { src = false }
+        pip { install 'networkx==3.4.2' }
+    }
+    sourceSets {
+        main { srcDir layout.buildDirectory.dir('nexusPython').get().asFile }
+    }
+}
+
+dependencies {
+    implementation 'org.godotengine:godot:4.7.2.stable'
+    implementation 'androidx.fragment:fragment:1.8.6'
+}
+
+// Copy only the engine: never bundle server.py, loom, AI credentials, or tests.
+def stagePython = tasks.register('stageNexusPython', Sync) {
+    from('../../..') {
+        include 'game.py', 'city.py', 'clue.py', 'genotype.py', 'modality.py',
+                'routine.py', 'suspect.py', 'solo_runtime.py', 'narrative.py', 'scenario_graph.py'
+    }
+    into layout.buildDirectory.dir('nexusPython')
+}
+def stageAssets = tasks.register('stageNexusAssets', Sync) {
+    from('../..') {
+        include '*.gd', '*.gdshader', '*.tscn', 'project.godot'
+    }
+    into layout.buildDirectory.dir('nexusAssets')
+}
+tasks.configureEach {
+    if (name.startsWith('install') && name.endsWith('PythonRequirements')) dependsOn stagePython
+    if (name.startsWith('merge') && name.endsWith('PythonSources')) dependsOn stagePython
+    if (name.startsWith('generate') && name.endsWith('PythonAssets')) dependsOn stagePython
+    if (name.startsWith('merge') && name.endsWith('Assets')) dependsOn stageAssets
+}

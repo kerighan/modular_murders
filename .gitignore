@@ -4,3 +4,13 @@ __pycache__/
 .venv/
 *.loom
 *.loom.txn
+*.loom.lock
+godot/android-solo/.sdk/
+godot/android-solo/.gradle/
+godot/android-solo/.gradle-home/
+godot/android-solo/.inspect/
+godot/android-solo/.tools/
+godot/android-solo/build/
+godot/android-solo/local.properties
+godot/android-solo/**/build/
+godot/builds/

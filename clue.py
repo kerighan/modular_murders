@@ -64,8 +64,8 @@ CLUES = [
 
     LinkClue(Location.VICTIM_HOUSE, "Une lettre de menace glissée sous la porte : son auteur connaissait bien la victime.",
              KNOWN + [LinkToVictim.EX]),
-    LinkClue(Location.MURDERER_HOUSE, "Un carnet où quelqu'un s'est inventé une autre vie. Un mensonge soigneusement entretenu.", KNOWN),
-    LinkClue(Location.MURDERER_HOUSE, "Des coupures de presse, des photos volées d'inconnus. Un esprit qui s'en prend à des étrangers.",
+    LinkClue(Location.MURDERER_HOUSE, "Des échanges datés évoquent le cercle de la victime, sans identifier son agresseur.", KNOWN),
+    LinkClue(Location.MURDERER_HOUSE, "Des annonces et un carnet de contacts rappellent que la victime rencontrait aussi des personnes extérieures à son cercle.",
              [LinkToVictim.UNKNOWN]),
     LinkClue(Location.CRIME_SCENE, "Une violence démesurée. On ne frappe pas comme ça un inconnu : c'est une affaire de famille.",
              [LinkToVictim.SIBLING]),

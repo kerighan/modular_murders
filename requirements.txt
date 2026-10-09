@@ -1,6 +1,9 @@
 networkx
 loom
 pytest
+fastapi
+uvicorn
+websockets
 # characters voiced by an LLM (private lib, optional)
 # aiquery
 # optional, only for Case.draw()

@@ -37,13 +37,16 @@ class Case:
     def __init__(self, seed=None, n_suspects=None):
         self.rng = random.Random(seed)
         self.n_suspects = n_suspects or self.rng.randint(5, 10)
-        self.suspects = [Suspect(self.rng) for _ in range(self.n_suspects)]
-        self.suspects[0].guilty = True
-
-        self.graph = self.build_graph()
-        # murderer's trait value -> ids of the suspects sharing it (always includes 0)
-        self.commonalities = {f: set(self.graph.successors(f)) for f in self.graph.predecessors(0)}
-        self.facts = self.pick_facts()
+        for attempt in range(1024):
+            self.suspects = [Suspect(self.rng) for _ in range(self.n_suspects)]
+            self.suspects[0].guilty = True
+            self.graph = self.build_graph()
+            self.commonalities = {f: set(self.graph.successors(f)) for f in self.graph.predecessors(0)}
+            self.facts = self.pick_facts()
+            if self.n_suspects < 3 or self.remaining(self.facts) == {0}:
+                break
+        else:
+            raise ValueError("Unable to generate a convergent, non-singleton case")
         # one piece of evidence per revealed fact
         self.clues = self.pick_clues()
         # innocents matching every clue: they need an alibi to be cleared
@@ -88,7 +91,10 @@ class Case:
         as possible, none redundant. When dopplegangers make isolation impossible,
         reveal everything and let alibis do the rest.
         """
-        values = list(self.commonalities)
+        # Never expose a singleton trait, even if it would simplify generation.
+        # If shared traits cannot isolate the culprit, verified alibis are the
+        # additional observations needed, rather than an identifying shortcut.
+        values = [f for f, candidates in self.commonalities.items() if len(candidates) >= 2]
         subsets = (c for r in range(1, len(values) + 1) for c in itertools.combinations(values, r))
         isolating = [c for c in subsets if self.remaining(c) == {0}]
         minimal = [c for c in isolating if not any(set(o) < set(c) for o in isolating)]

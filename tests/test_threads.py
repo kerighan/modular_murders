@@ -153,3 +153,38 @@ def test_the_deadline_closes_the_case():
     assert session.finished and session.journal[-1]["id"] == "closed"
     with pytest.raises(ValueError):
         session.go("bar")
+
+
+# ---------------------------------------------------------------- turn-based clock
+
+def test_turn_mode_freezes_the_clock_until_the_turn_ends():
+    from scenario_play import sample_playable, PlaySession
+    case = sample_playable(0)
+    s = PlaySession(case, ("search", "rapport"), strict=False, difficulty="normal", turn_minutes=30)
+    start, turns = s.at, s.turns_left
+    s.do("inspect_scene")
+    s.go("bar")
+    assert s.at == start and s.turns_left == turns  # actions and trips take no clock time
+    s.end_turn()
+    assert s.at == start + 30 and s.turns_left == turns - 1
+    while s.turns_left > 1:
+        s.end_turn()
+    assert not s.finished
+    s.end_turn()
+    assert s.finished and any(r["id"] == "closed" for r in s.journal)
+
+
+def test_turn_mode_mistake_costs_minutes_but_closes_only_at_the_turn_end():
+    from scenario_play import sample_playable, PlaySession
+    case = sample_playable(0)
+    s = PlaySession(case, ("search", "rapport"), strict=False, difficulty="difficile", turn_minutes=30)
+    author = case.crime.kernel.roles.author
+    wrong = next(p for p in sorted(case.plan.population) if p != author)
+    s.place = case.life.people[wrong].home
+    s.do("meet:" + wrong)
+    while s.time_left > 60:
+        s.end_turn()
+    won, text = s.accuse(wrong)
+    assert not won and "3 tours" in text and s.time_left == 0 and not s.finished  # penalty pushed past the deadline
+    s.end_turn()
+    assert s.finished

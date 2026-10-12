@@ -286,6 +286,7 @@ def guide(session):
     return {"remaining": len(remaining), "accusable": len(remaining) == 1 and (not missing or not session.strict),
             "missing": missing if session.strict else [],
             "deadline": None if session.deadline is None else clock(session.deadline), "time_left": session.time_left,
+            "turns_left": session.turns_left,
             "mistakes": session.mistakes, "threads": threads}
 
 

@@ -1200,3 +1200,23 @@ def test_right_accusation_wins_without_a_complete_file():
     assert view["winner"] == "Ada" and view["ended"]["won"] is True and "Dossier établi" in view["ended"]["text"]
     restored = CausalGame.restore(0, "Ada", game.snapshot(), True)
     assert restored.view(restored.player) == view
+
+
+def test_closing_a_conversation_is_always_possible_after_the_case_ends():
+    game = CausalGame(0, ["Ada"])
+    game.equip(0, ("search", "rapport"), game.case.crime.scene, "difficile")
+    game.start()
+    pid = next(p for p in sorted(game.case.plan.population) if game.occupants(game.case.life.people[p].home))
+    home = game.case.life.people[pid].home
+    travel(game, game.homes[home])
+    game.play(("ring", home))
+    session = game.session
+    session.at = session.deadline
+    session._check_deadline()
+    game.note_turns.append(game.tick + 1)
+    assert game.view(game.player)["ended"] is not None and game.view(game.player)["pending"] is not None
+    assert game.options() == {}
+    game.play(("stop",))  # never refused: the closing card must not be stuck behind a conversation
+    assert game.view(game.player)["pending"] is None
+    with pytest.raises(ValueError):
+        game.play(("end",))

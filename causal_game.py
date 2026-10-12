@@ -15,7 +15,8 @@ from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v6"  # thread profiles, cupboards everywhere, print comparisons; new investigations required
+VERSION = "causal-3d-v7"  # turn-based clock: time only moves at the end of a turn; new investigations required
+TURN_MINUTES = 30  # one turn of six actions on the case clock
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
          "search": "Fouille minutieuse · examiner les objets plus rapidement",
@@ -89,7 +90,7 @@ class CausalGame:
             raise ValueError("Difficulté inconnue")
         # Free mode: any named person can be accused, a mistake costs time,
         # and the deadline scales with the shortest thread of this case.
-        self.session = PlaySession(self.case, tuple(items), strict=False, difficulty=difficulty)
+        self.session = PlaySession(self.case, tuple(items), strict=False, difficulty=difficulty, turn_minutes=TURN_MINUTES)
         self.difficulty = difficulty
         self.session.place = start
         self.player.items, self.player.place = set(items), start
@@ -463,6 +464,13 @@ class CausalGame:
 
     def play(self, key):
         key = tuple(key)
+        if self.session.finished and key == ("stop",):
+            # Closing a conversation after the case is closed is always allowed: no dead end.
+            self.speaker, self.camera_block, self.camera_place = None, None, None
+            self.session.doorstep = None
+            self.cue = None
+            self.history.append(list(key))
+            return []
         options = self.options()
         if key not in options:
             raise ValueError("Cette action n'est pas disponible ici.")
@@ -477,7 +485,7 @@ class CausalGame:
         elif action == "end":
             self.tick += 1
             p.ap = 6
-            s._advance(15)
+            s.end_turn()  # the clock only moves here; a case past its deadline closes now
             s.doorstep = None
             self.update_positions()
             if s.place in self.homes and self.occupants(s.place):
@@ -880,7 +888,8 @@ class CausalGame:
         progress = {"preuves": len(facts), "documents": sum(r["kind"] in ("correspondence", "diary", "relationship") for r in s.journal)}
         return {"engine": VERSION, "player": player.name, "active_player": player.name,
                 "tick": self.tick, "ap": player.ap, "clock": clock(s.at), "place": s.place, "region": self.parents.get(s.place, s.place),
-                "difficulty": self.difficulty, "deadline": clock(s.deadline) if s.deadline is not None else None, "time_left": s.time_left, "mistakes": s.mistakes,
+                "difficulty": self.difficulty, "deadline": clock(s.deadline) if s.deadline is not None else None, "time_left": s.time_left,
+                "turns_left": s.turns_left, "turn_minutes": TURN_MINUTES, "mistakes": s.mistakes,
                 "ended": self.ending_view(),
                 "items": sorted(player.items), "winner": self.winner.name if self.winner else None,
                 "grid": GRID, "adjacency": adjacency, "places": places, "outdoors": s.place in self.outdoors,

@@ -1,5 +1,23 @@
 # Passation : client Godot
 
+## Horloge au tour par tour — v27 (12 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v27.apk`, versionCode 27 / `0.27-causal`, même signature.
+Moteur `causal-3d-v7` : les sauvegardes v26 et antérieures repartent sur une nouvelle enquête.
+
+- `PlaySession(..., turn_minutes=30)` (mode tour par tour, utilisé par `causal_game.py`) :
+  `_advance` ne fait rien pendant le tour, `end_turn()` avance de 30 minutes et c'est le seul
+  moment où l'échéance peut classer l'affaire. Un dossier rejeté avance quand même l'horloge
+  de 90 minutes (`force=True`), mais la clôture attend la fin du tour. `turns_left`
+  (`ceil(time_left / 30)`) est exposé dans `view["turns_left"]`, `view["turn_minutes"]` et
+  dans `view["threads"]`.
+- Adaptateur : `end` appelle `s.end_turn()` ; plus aucune action n'avance l'heure. Les délais
+  (légiste, laboratoire) se comptent donc en tours : « dès 09:08 » veut dire après le tour où
+  l'horloge dépasse 09:08.
+- Client : en-tête « 9 tours avant l'échéance », onglet Fils « 9 tours restants (4 h 15) »,
+  confirmation d'accusation « vous perdez trois tours ». Textes du guide alignés.
+- La CLI (`scenario_play.py`) garde son horloge continue (minutes par action).
+
 ## Vie de rue : circulation et train — v26 (12 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v26.apk`, versionCode 26 / `0.26-causal`, même moteur et

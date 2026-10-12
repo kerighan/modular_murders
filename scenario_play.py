@@ -362,10 +362,12 @@ DIFFICULTY = {"facile": 3.0, "normal": 2.2, "difficile": 1.6, "libre": None}  # 
 
 
 class PlaySession:
-    def __init__(self, case, skills=("search", "rapport"), *, strict=True, difficulty="normal"):
+    def __init__(self, case, skills=("search", "rapport"), *, strict=True, difficulty="normal", turn_minutes=None):
         """`strict` keeps the original adjudication: an accusation is refused until the
         file is complete. Otherwise the detective accuses at their own risk, against
-        the clock: a wrong accusation costs time and clears the accused."""
+        the clock: a wrong accusation costs time and clears the accused.
+        With `turn_minutes`, the clock is frozen during a turn: only `end_turn()` moves
+        it, and the deadline is only checked then. Mistakes still cost their minutes."""
         if len(set(skills)) != 2 or not set(skills) <= set(SKILLS):
             raise ValueError("Choose exactly two distinct skills: " + ", ".join(SKILLS))
         if difficulty not in DIFFICULTY:
@@ -373,7 +375,7 @@ class PlaySession:
         self.case, self.skills = case, frozenset(skills)
         self.state, self.at, self.place = DiscoveryState(), 1440 + 8 * 60, case.crime.scene
         self.strict, self.cleared, self.mistakes = strict, set(), 0
-        self.deadline = None
+        self.deadline, self.turn_minutes = None, turn_minutes
         if not strict and DIFFICULTY[difficulty] is not None:
             from scenario_threads import deadline_minutes
             self.deadline = self.at + deadline_minutes(case, DIFFICULTY[difficulty])
@@ -389,9 +391,31 @@ class PlaySession:
     def time_left(self):
         return None if self.deadline is None else max(0, self.deadline - self.at)
 
-    def _advance(self, minutes):
-        """The clock moves; past the deadline the case is closed unsolved."""
+    @property
+    def turns_left(self):
+        """Turns the detective can still end before the case is closed."""
+        if self.deadline is None or self.turn_minutes is None:
+            return None
+        return max(0, -(-self.time_left // self.turn_minutes))
+
+    def _advance(self, minutes, *, force=False):
+        """The clock moves; past the deadline the case is closed unsolved.
+        In turn mode an action takes no time: only turns and penalties (`force`) do,
+        and the deadline waits for the end of the turn."""
+        if self.turn_minutes is not None and not force:
+            return
         self.at += minutes
+        if self.turn_minutes is None:
+            self._check_deadline()
+
+    def end_turn(self):
+        """Turn mode: the clock jumps, and a case past its deadline is closed now."""
+        if self.turn_minutes is None:
+            raise ValueError("Not a turn-based session")
+        self.at += self.turn_minutes
+        self._check_deadline()
+
+    def _check_deadline(self):
         if self.deadline is not None and self.at >= self.deadline and not self.finished:
             self.finished = True
             self.journal.append({"id": "closed", "kind": "ending",
@@ -907,11 +931,13 @@ class PlaySession:
             self.cleared.add(person)
             self.journal.append({"id": "cleared:" + person, "kind": "accusation",
                                  "text": f"Le commissaire a rejeté le dossier contre {name} : les charges ne tiennent pas. {name} est mis(e) hors de cause."})
-            self._advance(self.MISTAKE_MINUTES)
+            self._advance(self.MISTAKE_MINUTES, force=True)
             if self.finished:
                 return False, f"Le commissaire rejette le dossier contre {name}. Le temps vous a manqué : l'affaire est classée sans suite."
+            lost = ("une heure et demie" if self.turn_minutes is None else
+                    f"{-(-self.MISTAKE_MINUTES // self.turn_minutes)} tours")
             return False, (f"Le commissaire rejette le dossier contre {name} : les charges ne tiennent pas. "
-                           f"{name} est hors de cause, et vous avez perdu une heure et demie.")
+                           f"{name} est hors de cause, et vous avez perdu {lost}.")
         self.finished = True
         if not success:
             return False, "Accusation rejetée : la reconstitution est erronée."

@@ -434,6 +434,12 @@ func _on_message(msg: Dictionary) -> void:
 			if not view.has("setup"):
 				_present_feedback(previous)
 				if view.get("ended") != null:
+					# The case is over: no conversation may hold the player back from the closing card.
+					dialogue.waiting = false
+					dialogue.hide()
+					selected_person.clear()
+					if view.get("pending") != null and not solo_busy:
+						_send({"type": "play", "key": ["stop"]})
 					_show_ending()
 		"events":
 			pending_events.append_array(msg["events"])
@@ -644,7 +650,9 @@ func _draw() -> void:
 		header.text += " · Seed %s · SOLO" % str(int(view.get("solo", {}).get("seed", SEED)))
 	if view.has("clock"):
 		header.text += " · " + str(view.clock)
-	if view.get("time_left") != null:
+	if view.get("turns_left") != null:
+		header.text += " · " + _turns(int(view.turns_left)) + " avant l'échéance"
+	elif view.get("time_left") != null:
 		header.text += " · " + _countdown(int(view.time_left)) + " avant l'échéance"
 		if int(view.get("mistakes", 0)) > 0:
 			header.text += " · %d dossier%s rejeté%s" % [int(view.mistakes), "s" if int(view.mistakes) > 1 else "", "s" if int(view.mistakes) > 1 else ""]
@@ -663,6 +671,9 @@ func _draw() -> void:
 	last_region = street
 	if interior.visible:
 		_draw_interior()
+
+func _turns(turns: int) -> String:
+	return "%d tour%s" % [turns, "s" if turns > 1 else ""]
 
 func _countdown(minutes: int) -> String:
 	return "%d h %02d" % [minutes / 60, minutes % 60] if minutes >= 60 else "%d min" % minutes
@@ -871,7 +882,7 @@ func _confirm_accusation(key: Array) -> void:
 			accuse_key.clear()
 			dialogue.recover())
 	accuse_key = key.duplicate(true)
-	accuse_dialog.dialog_text = "Accuser %s devant le commissaire ?\nSi les charges ne tiennent pas, %s est mis(e) hors de cause et vous perdez 1 h 30." % [name, name]
+	accuse_dialog.dialog_text = "Accuser %s devant le commissaire ?\nSi les charges ne tiennent pas, %s est mis(e) hors de cause et vous perdez trois tours." % [name, name]
 	accuse_dialog.popup_centered(Vector2i(640, 280))
 
 func _show_ending() -> void:
@@ -880,6 +891,7 @@ func _show_ending() -> void:
 		return
 	var ended: Dictionary = view.ended
 	end_page = _page(str(ended.get("title", "Fin de l'enquête")))
+	end_page.get_parent().layer = 6  # above the conversation box and the HUD
 	var column: VBoxContainer = end_page.get_child(0)
 	column.add_theme_constant_override("separation", 18)
 	var verdict := Label.new()
@@ -919,6 +931,8 @@ func _play_option(key: Array) -> void:
 	_send({"type": "play", "key": key})
 
 func _play_local(key: Array) -> void:
+	if view.get("ended") != null and key != ["stop"]:
+		return  # the case is closed: only the closing card acts
 	if key[0] == "accuse" and accuse_key.is_empty():
 		_confirm_accusation(key)
 		return
@@ -2168,12 +2182,14 @@ func _draw_notebook_threads() -> void:
 	var threads: Array = guide.get("threads", [])
 	notebook_tabs.threads.text = "Fils"
 	var status := "Échéance %s" % str(guide.get("deadline", view.get("deadline", "")))
-	if guide.get("time_left") != null:
+	if guide.get("turns_left") != null:
+		status += " · %s restants (%s)" % [_turns(int(guide.turns_left)), _countdown(int(guide.get("time_left", 0)))]
+	elif guide.get("time_left") != null:
 		status += " · %s restantes" % _countdown(int(guide.time_left))
 	status += " · %d personne%s encore possible%s" % [int(guide.get("remaining", 0)), "s" if int(guide.get("remaining", 0)) > 1 else "", "s" if int(guide.get("remaining", 0)) > 1 else ""]
 	if int(guide.get("mistakes", 0)) > 0:
 		status += " · %d dossier%s rejeté%s" % [int(guide.mistakes), "s" if int(guide.mistakes) > 1 else "", "s" if int(guide.mistakes) > 1 else ""]
-	var advice := "Chaque fil mène seul au coupable. Suivez celui qui vous ressemble, ou croisez-les. Le dossier se dépose au Commissariat ; un dossier rejeté coûte 1 h 30."
+	var advice := "Chaque fil mène seul au coupable. Suivez celui qui vous ressemble, ou croisez-les. Le temps ne passe qu'en terminant le tour ; le dossier se dépose au Commissariat, et un dossier rejeté coûte trois tours."
 	if guide.get("accusable", false):
 		advice = "Une seule personne reste possible : déposez le dossier au Commissariat."
 	elif not guide.get("missing", []).is_empty():

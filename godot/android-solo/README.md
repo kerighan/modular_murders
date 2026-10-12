@@ -1,5 +1,14 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.27-causal** : `../builds/nexus-city-solo-debug-v27.apk`.
+Horloge au tour par tour : les actions et les trajets ne consomment plus de
+temps, l'heure n'avance que de 30 minutes à « Terminer le tour », et c'est à
+ce moment-là seulement qu'une enquête hors délai est classée. L'en-tête et
+l'onglet Fils comptent en tours ; un dossier rejeté coûte trois tours. Moteur
+`causal-3d-v7` : les sauvegardes v26 repartent sur une nouvelle enquête. Même
+signature.
+
+
 Version **0.26-causal** : `../builds/nexus-city-solo-debug-v26.apk`.
 Vie de rue : neuf voitures roulent lentement dans les voies libres de la grille
 (circulation à droite, phares au sol), les voitures garées serrent le trottoir,

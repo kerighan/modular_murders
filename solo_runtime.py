@@ -220,8 +220,12 @@ class SoloSession:
                     # Keep the old bytes for recovery instead of overwriting them.
                     backup = self.path.with_name(self.path.name + f".invalid-{time.time_ns()}")
                     self.path.rename(backup)
-                    self._emit("error", message=f"Sauvegarde illisible, conservée dans {backup.name} : {exc}")
-                    self.seed, self.name = 42, "Ada"
+                    if "incompatible" in str(exc) or "autre moteur" in str(exc):
+                        # A new build starts from scratch: the old investigation is archived, not patched.
+                        self._emit("events", events=["🔔 Nouvelle version du jeu : l'enquête précédente est archivée, une nouvelle commence."])
+                    else:
+                        self._emit("error", message=f"Sauvegarde illisible, conservée dans {backup.name} : {exc}")
+                    self.seed = random.SystemRandom().randrange(0, 1001)
                     self._fresh()
             else:
                 self._fresh()

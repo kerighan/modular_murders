@@ -1,5 +1,14 @@
 # Passation : client Godot
 
+## Phares — v28 (12 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v28.apk`, versionCode 28 / `0.28-causal`, même moteur et
+signature que la v27. `_car(at, h, turn, lit)` : seules les voitures de circulation sont
+allumées (feux blanc chaud `fff1c4`, feux arrière `ff2f4f`), les voitures garées ont des
+optiques éteintes en matériau opaque. Le faisceau au sol a été retiré : une plaque fine
+posée sur la chaussée devant la voiture n'est pas visible depuis l'angle de la caméra
+(masquée par la carrosserie), seul un volume épais l'était, et ça faisait un pavé.
+
 ## Horloge au tour par tour — v27 (12 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v27.apk`, versionCode 27 / `0.27-causal`, même signature.

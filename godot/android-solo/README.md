@@ -1,5 +1,11 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.28-causal** : `../builds/nexus-city-solo-debug-v28.apk`.
+Phares corrigés : feux blanc chaud et feux arrière rouges seulement sur les
+voitures en circulation, voitures garées éteintes, plus de faisceau au sol.
+Même moteur `causal-3d-v7` et même signature : les enquêtes v27 sont conservées.
+
+
 Version **0.27-causal** : `../builds/nexus-city-solo-debug-v27.apk`.
 Horloge au tour par tour : les actions et les trajets ne consomment plus de
 temps, l'heure n'avance que de 30 minutes à « Terminer le tour », et c'est à

@@ -785,8 +785,11 @@ func _tree(at: Vector3, h: int) -> void:
 		if i % 3 == 0:
 			_box(at + offset + Vector3(0.17, 0, 0.17), Vector3(0.09, 0.09, 0.09), PINK * 0.75, "light")
 
-func _car(at: Vector3, h: int, turn: bool) -> void:
+func _car(at: Vector3, h: int, turn: bool, lit: bool = false) -> void:
+	# Parked cars keep their lamps off; traffic drives with warm headlights and red tail lamps.
 	var color := [Color("285368"), Color("433b55"), Color("273341"), Color("65676b")][absi(h) % 4] as Color
+	var head := Color("fff1c4") if lit else Color("3c4752")
+	var tail := Color("ff2f4f") if lit else Color("4a2630")
 	var parts := [
 		[Vector3(0, 0.25, 0), Vector3(1.05, 0.3, 0.49), color],
 		[Vector3(-0.07, 0.49, 0), Vector3(0.54, 0.23, 0.43), DARK],
@@ -804,8 +807,8 @@ func _car(at: Vector3, h: int, turn: bool) -> void:
 	for z in [-0.16, 0.16]:
 		var front := Vector3(0.54, 0.3, z)
 		var back := Vector3(-0.54, 0.3, z)
-		_box(at + (Vector3(front.z, front.y, front.x) if turn else front), Vector3(0.09, 0.07, 0.09), CYAN, "light")
-		_box(at + (Vector3(back.z, back.y, back.x) if turn else back), Vector3(0.09, 0.07, 0.09), Color("ff3359"), "light")
+		_box(at + (Vector3(front.z, front.y, front.x) if turn else front), Vector3(0.09, 0.07, 0.11), head, "light" if lit else "solid")
+		_box(at + (Vector3(back.z, back.y, back.x) if turn else back), Vector3(0.06, 0.06, 0.09), tail, "light" if lit else "solid")
 
 func _crossing(at: Vector3) -> void:
 	# Zebra crossings sit at the four edges; tiny dashes leave the junction clear.
@@ -865,11 +868,7 @@ func _spawn_traffic(count: int) -> void:
 		var node := Node3D.new()
 		node.name = "Car%d" % i
 		_begin()
-		_car(Vector3.ZERO, i * 5 + 2, false)
-		# Headlight beam on the wet street and a brighter rear: readable from the city view.
-		_box(Vector3(1.25, 0.012, 0), Vector3(1.4, 0.004, 0.62), Color("5c8696"), "light")
-		_box(Vector3(2.15, 0.011, 0), Vector3(0.5, 0.004, 0.8), Color("3b5661"), "light")
-		_box(Vector3(-0.56, 0.3, 0), Vector3(0.05, 0.08, 0.42), Color("ff3359"), "light")
+		_car(Vector3.ZERO, i * 5 + 2, false, true)
 		_flush(node, "Traffic")
 		add_child(node)
 		var car := {"node": node}

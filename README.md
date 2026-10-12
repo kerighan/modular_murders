@@ -13,6 +13,52 @@ uvicorn server:app          # the same game over WebSocket, for the Godot client
 pytest
 ```
 
+Offline scenario audit: `python scenario_audit.py --count 1000` (or `--seed 42 --json`).
+The exact source planner measures mandatory methods, shortcuts and repeated
+resolution recipes. It is not a full travel/QTE/trait solver. Scope, measured
+results and generator/client boundaries: [scenario audit](godot/SCENARIO_AUDIT.md).
+Solo v11 adds district/place presence and one-shot, multi-speaker arrival exchanges.
+
+Experimental **new causal generator**, playable separately from the legacy game:
+
+```bash
+python scenario_sampler.py --play --seed 7 --skills fingerprints,search
+python scenario_playtest.py --seed 0 --count 20
+```
+
+Real relationships, bounded conversations, home correspondence/photos, a victim's
+last plan, local camera/hour queries, searchable district bins, and optional
+partial fingerprints on recovered objects and household cups. No LLM/server/DB
+required. Godot solo now uses this generator through `causal_game.py`; the
+legacy multiplayer server/CLI remain separate. Scope and limits:
+[playable causal prototype](godot/SCENARIO_PLAYABLE.md).
+
+```bash
+godot --path godot -- --seed=7             # causal solo, no server
+godot --path godot -- --solo --legacy-engine  # previous offline engine
+```
+
+The Android solo build also embeds the causal generator, with its own save file.
+The 3D adapter preserves actual routes, local/hour cameras, physical witnesses
+and objects, two skills, manual turns, notebook notes and replay persistence.
+Current APK: [v23 offline solo](godot/builds/nexus-city-solo-debug-v23.apk).
+Seven suspects, role-based service corroboration, acquired chronological timeline
+(`horaires` in the causal CLI), and optional source-specific investigation trails.
+New investigation required after v17; previous save retained separately.
+V19 preserves v18 investigations and replaces minute-perfect service memories
+with conservative quarter-hour landmarks or drink/collapse event anchors.
+V20 preserves these saves and adds a reading-focused notebook (compact tabs,
+evidence on the left, independently scrollable suspects on the right) and a
+distinct neon bar with a decorative pool table. No investigation rules changed.
+V21 keeps scenery and object slots stable when actions are consumed. Only a
+deliberate medical-transfer request removes the body from the scene and places
+it on the morgue table. Existing v18–v20 saves remain compatible.
+V22 exposes relationship/alibi/observations/tensions directly. Every first
+informative question costs one PA; repeats are free. Unasked questions become
+disabled at zero PA while acquired replies remain readable. Historical saves
+keep their original past costs; only subsequent questions use the new pricing.
+Validation and remaining pacing limits: [v18 playtest](godot/PLAYTEST_V18.md).
+
 ## Layers
 
 - **Case** (`suspect.py`): draws the suspects, makes suspect 0 the murderer, picks the
@@ -47,6 +93,11 @@ pytest
   lounge in the same 3D world (camera teleport, not a modal). Android embeds Python for
   offline solo play; desktop supports either solo or the existing server.
   See [Android build](godot/android-solo/README.md) and [handoff](godot/HANDOFF.md).
+  Service NPCs, interaction objects and apartment doors carry actual engine
+  actions. The notebook's follow/exclude states are visual only; the world fades
+  to monochrome at zero AP while the UI stays coloured. Five questions fit on
+  mobile without scrolling; occasional private detective thoughts are separate
+  from NPC speech. Latest Android test build: solo 0.20-causal.
 
 Turns end explicitly with `("end",)`, never automatically at zero AP. Pending
 questions remain free to finish; inhabitants advance only at the end of the
@@ -71,12 +122,14 @@ game.notebook(game.player)     # rows the client renders as the Qui est-ce ? boa
 
 ## Working on the Godot client
 
-Godot is a single binary, installed at `~/.local/bin/godot` (4.7). Two terminals:
+Godot is a single binary, installed at `~/.local/bin/godot` (4.7).
 
 ```
-uvicorn server:app --reload       # terminal 1: the engine
-godot --path godot -e             # terminal 2: the editor on the project; F5 runs, F8 stops
-godot --path godot                # or run the game straight away, no editor
+godot --path godot -e             # editor; F5 runs causal solo, F8 stops
+godot --path godot -- --seed=7     # run causal solo without an editor/server
+# Legacy multiplayer, in two terminals:
+uvicorn server:app --reload
+godot --path godot -- --server-url=ws://127.0.0.1:8000/ws/42/Ada
 ```
 
 `godot/main.gd` coordinates the procedural scene; `city_visuals.gd`,

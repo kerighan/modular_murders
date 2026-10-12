@@ -14,3 +14,5 @@ godot/android-solo/build/
 godot/android-solo/local.properties
 godot/android-solo/**/build/
 godot/builds/
+godot/art/captures/*.png.import
+godot/art/captures/

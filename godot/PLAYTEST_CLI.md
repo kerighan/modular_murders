@@ -1,4 +1,69 @@
-# Playtest enquête — 8 octobre 2026
+# Playtest enquête — 9 octobre 2026
+
+## Présences / échanges / audit v11
+
+Graine 5, `python godot/tests/playtest_cli.py 5 --conversations --encounters` :
+affaire terminée, 37 actions (dont écoute gratuite), tour 11, 22 notes.
+Transcription finale `/tmp/nexus-v11-cli5-final.log`, reprise Loom après fermeture du CLI :
+journal exact et `scenes_seen` restaurés. Une discussion entre deux inconnues
+au bar apparaît avant l'interrogatoire. Dans le journal, les locuteurs inconnus
+sont distingués par leur description visible, pas par un nom non appris.
+
+Les nouveaux tests vérifient les décomptes, identités privées, vraie co-présence
+et relation, consommation unique, pas de PA ni de preuve ajoutée, aucune scène
+pendant un interrogatoire, reprise JSON/Loom. Godot : échange automatique à
+l'entrée physique, portraits alternés par taps natifs, pas de répétition, radar
+quartiers/lieux/paliers. 18:9 et 20:9, low-FX, captures desktop v11.
+
+Audit de 1 000 graines : [SCENARIO_AUDIT.md](SCENARIO_AUDIT.md). Vidéo obligatoire
+dans la projection narrative ; même recette de reconstitution dans 100 % des
+affaires. **Pas** un audit complet des déplacements, QTE ou traits physiques.
+841 tests Python. Aucun de ces essais ne constitue une mesure utilisateur du fun.
+
+## Lisibilité / interactions v10 — 9 octobre 2026
+
+Trois parties terminées dans le vrai CLI, `--offline --perfect --compact`,
+avec `godot/tests/playtest_cli.py SEED --conversations`. Cette fois, deux
+habitants rencontrés au bar/Palace sont interrogés **avant** les documents :
+lien, rumeur, vie personnelle. Leurs réponses et le journal ont été relus,
+pas uniquement l'accusation finale. Miroir limité à la vue publique pour les
+choix ; candidat final = intersection des personnes des documents affichés.
+Pas un test utilisateur aveugle, QTE parfaits pour isoler la lisibilité.
+
+| Graine | Actions | Tour final | Notes |
+|---|---|---|---|
+| 42 | 32 | 7 | 23 |
+| 7 | 33 | 8 | 23 |
+| 4 | 45 | 10 | 25 |
+
+Transcriptions `/tmp/nexus-v10-cli42.log`, `/tmp/nexus-v10-cli7.log`,
+`/tmp/nexus-v10-cli4.log`. Bases temporaires propres ; chaque writer fermé
+avant reprise Loom, victoire / reconstitution / journal exact contrôlés.
+La compétence Loom a servi à isoler ces sauvegardes et leurs reprises.
+
+La rumeur dit maintenant *de quoi il s'agit* sans réciter quatre noms :
+dettes, dossier à transmettre, demande d'excuses. Les inconnus n'inventent pas
+de conflits ; les suspects ne donnent plus des instructions de recoupement.
+Une pensée incertaine du détective est séparée, privée et conservée, une fois
+par sujet. Les documents portent des titres concrets (relances, courrier à
+l'avocat, excuses), et les pistes des questions / sources plutôt que du jargon.
+
+Correction supplémentaire : un groupe sanguin déjà connu ne déclenche plus
+une analyse redondante ; un nouveau prélèvement à la morgue se traite sur place.
+Fouille discrète terminée : le ruban / autorisation explique l'accès bloqué.
+
+772 tests Python, dont 49 nouveaux cas de présentation/confidentialité et
+couverture des actions par PNJ, objets ou portes. Godot desktop : taps natifs
+en 1080×540 / 1200×540, cinq questions sans scroll, pensée italique, coffre,
+ouvreuse, porte d'appartement au coût réel, classement/reprise du carnet,
+monochrome du monde seul et pancarte du quartier repéré. Même scénario passé
+en low-FX. Pas de test sur un appareil Android physique.
+
+APK 0.10 signé comme v9, modules exécutés depuis le ZIP sous Python 3.13,
+10 modules Python / 27 assets Godot identiques aux sources. Pas de serveur,
+Loom ou permission Internet dans l'application. Pièces génériques et trois
+familles narratives seulement : cette passe clarifie les interactions, elle
+ne prétend pas achever la variété narrative ou l'équilibrage.
 
 ## Objets facultatifs v9 — 9 octobre 2026
 

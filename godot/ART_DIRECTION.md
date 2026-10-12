@@ -1,5 +1,84 @@
 # Nexus City — direction visuelle
 
+## Allées lisibles au Néon Bleu — version 0.23
+
+Scène de crime dégagée au centre/droite, à distance des clients, du comptoir,
+des tables et du billard. Valise à l'avant gauche. Personnages dans des allées
+distinctes ; contact éventuel placé après les clients, pas sur le corps.
+Sélecteurs tactiles 100 × 64, titres courts, pas de recouvrement objets/personnes
+dans le cadrage initial 18:9/20:9 testé. Aucun repositionnement après collecte.
+Captures réelles seed 5 avant/après enquête + stress visuel synthétique avec
+plusieurs clients/contact. Rendu desktop, pas de téléphone physique.
+
+
+## Dialogue accessible et coût lisible — version 0.22
+
+Première ligne : relation avec la victime / alibi. Deuxième : observations /
+tensions. Les quatre questions sont visibles sans sous-menu ni scroll en
+18:9 et 20:9. Métier/habitudes et personnes évoquées restent dans deux dossiers
+secondaires. Nouvelle question « 1 PA » ; réponse entendue « gratuit ».
+À zéro PA, nouvelle question grisée, relecture disponible, sortie « Revenir à
+la ville » et statut « 0 PA · Relecture gratuite ». Dernière réponse conservée
+à l'écran jusqu'à son acquittement, aucune interruption de lecture.
+Relance générique supprimée des PNJ ; premières questions concrètes au barman.
+Captures `guidance-dialogue-*-v22-*.png`, rendu desktop/touches natives.
+
+## Permanence du décor — version 0.21
+
+Un objet appartient au lieu, pas à la liste des actions disponibles. Inspection,
+fouille, prélèvement ou lecture ne changent ni sa forme ni sa position. Seuls
+les sélecteurs/halos reflètent les possibilités restantes. Slots stables, même
+quand un objet est retiré. Valise portable pour le relevé d'empreintes, pas de
+bureau qui apparaît dans la rue. Verre, arme et placard ont un modèle distinct.
+
+Le corps reste sur place après constat. Un choix explicite de transfert pour
+examen le retire de la scène et le place sur la table de la morgue. Cette table
+existe avant la demande ; les autres objets de la scène ne bougent pas.
+Captures comparatives natives desktop téléphone 18:9/20:9 :
+`guidance-fixtures-*-v21-*.png`. Pas de nouvelle lumière/texture/viewport.
+
+## Carnet de lecture et bar voxel — version 0.20
+
+Carnet en deux zones : large page de lecture à gauche, portraits compacts en
+colonne à droite. Onglets fins et soulignés, hiérarchie titre/source/contenu,
+texte courant 16–17 px avec interligne. Une seule preuve dépliée ; fiche du
+suspect sélectionné séparée de la liste, récit et corroboration prioritaires.
+Biographie secondaire repliable. Fermeture en haut et options rares dans « ••• »
+libèrent le bas de page. Chaque zone se parcourt au doigt indépendamment.
+Fond encre, source ambre/cyan, vert réservé aux états corroborés/confirmés,
+priorité personnelle cyan et exclusion atténuée/reléguée : règles inchangées.
+
+Première pièce spécifique au Néon Bleu, référence `../Neon Noir Voxel Barroom.png` :
+briques sombres, carrelage serré, contre-jour rouge au comptoir, bouteilles et chat
+néon, lampes ambre, banquettes et billard vert. Clients réels dans la salle,
+barman derrière le comptoir ; pas de silhouettes de faux suspects pour meubler.
+Billard décoratif en attendant des activités réellement générées. Géométrie
+fusionnée en deux meshes, trois lumières sans ombres, aucun bitmap/viewport ajouté.
+Les autres lieux conservent pour l'instant leur pièce commune.
+
+Captures natives desktop téléphone 18:9 et 20:9 inspectées :
+`guidance-notebook-reading-v20-*.png`, `guidance-notebook-dossier-v20-*.png`,
+`guidance-notebook-populated-v20-*.png`, `guidance-barroom-v20-*.png`.
+APK solo v20, enquêtes précédentes conservées ; pas de test GPU physique Android.
+
+## Lisibilité et présence — version 0.10
+
+Service rose à l'accueil, suspects dorés dans la salle, détective cyan.
+Les actions sont portées par un objet voxel ou un personnage : coffre, papiers,
+terminal, téléphone, table d'examen, poubelles. Les paliers affichent les portes
+réelles du quartier et un habitant au seuil si présent. Même World3D/caméra,
+pas de viewport ajouté ni de textures ; pièce générique encore assumée.
+
+Questions : bloc augmenté, cinq boutons entièrement visibles en 1080×540 et
+1200×540. Réponses ambrées ; pensée du détective sur fond/bord cyan, portrait à
+chapeau, italique. Carnet trié par choix personnels avec déplacement animé des
+cartes et priorité cyan. Le monde seul se désature à 0 PA ; UI inchangée.
+
+Captures inspectées `questions-full-phone-v10*.png`, `detective-thought-phone-v10*.png`,
+`palace-usher-phone-v10*.png`, `apartment-hallway-phone-v10*.png`,
+`notebook-following-phone-v10*.png`, `exhausted-monochrome-phone-v10*.png`.
+Tests natifs du rendu desktop, pas de validation GPU sur appareil Android.
+
 ## Lounge global — version 0.8
 
 Première pièce générique inspirée de `Neon Noir Cabaret Lounge.png` : rideaux

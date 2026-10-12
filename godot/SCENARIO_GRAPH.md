@@ -1,4 +1,28 @@
-# Contrat du générateur d'enquête · v9
+# Contrat du générateur d'enquête · v11
+
+## Audit et échanges sociaux v11
+
+Voir [SCENARIO_AUDIT.md](SCENARIO_AUDIT.md) pour le solver indépendant, les limites
+de la projection, les résultats sur 1 000 graines et la frontière de modularité.
+La génération des supports ne change pas. `presence` expose les effectifs par
+quartier/lieu et les identités déjà apprises ; `scenes_at` fournit des répliques
+entre acteurs réellement liés et co-présents. Leur écoute est gratuite, privée,
+enregistrée une fois et restaurée par replay ; pas une preuve de culpabilité.
+`RULES_VERSION=11` protège la reprise des actions `listen`.
+
+## Projection humaine et interactions physiques
+
+Les rumeurs donnent un contexte partiel (dettes, dossier, excuses), pas les noms
+du groupe privé. Aucune adresse ni identité n'est dévoilée par une piste issue
+de cette seule rumeur. Le registre d'occasion n'expose pas le mobile caché.
+Les groupes nommés restent dans les documents qui les justifient. Une pensée
+du détective est une note privée incertaine, pas une preuve ni un écartement.
+
+`staff`, `fixtures`, `doors` projettent des cibles physiques et leurs options
+réelles. Les PNJ de service n'appartiennent pas aux candidats du graphe.
+Le tri manuel du carnet est purement client ; la vue moteur reste inchangée.
+Version de replay 10 : les révélations de noms ont changé, pas les ensembles
+mathématiques ni la génération du monde.
 
 ## Objets facultatifs, aucun intermédiaire imposé
 

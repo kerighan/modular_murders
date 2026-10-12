@@ -6,6 +6,7 @@ var identity := 0
 var accent := Color("65d9ec")
 var detective := false
 var unknown := false
+var appearance := {}
 
 func _init() -> void:
 	custom_minimum_size = Vector2(120, 136)
@@ -38,6 +39,9 @@ func _draw() -> void:
 	elif "châtains" in look:
 		hair = Color("694537")
 	var coat := [Color("536379"), Color("765b76"), Color("567d78"), Color("857053")][absi(identity) % 4] as Color
+	if not appearance.is_empty():
+		hair = {"noirs": Color("292c38"), "bruns": Color("694537"), "blonds": Color("cda95f"), "roux": Color("b7613c")}.get(appearance.get("hair", ""), hair)
+		coat = {"sombre": Color("293343"), "clair": Color("b1b6a7"), "coloré": Color("a8476c")}.get(appearance.get("coat", ""), coat)
 	if detective:
 		coat = accent.darkened(0.35)
 	var skin := Color("cea389")

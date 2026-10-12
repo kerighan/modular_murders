@@ -63,6 +63,9 @@ var triangle_count := 0
 var mesh_count := 0
 var rng := RandomNumberGenerator.new()
 var city_center := Vector3.ZERO
+var grade_material: ShaderMaterial
+var saturation_tween: Tween
+var world_saturation := 1.0
 
 func _init() -> void:
 	solid_material.shader = preload("res://voxel_surface.gdshader")
@@ -111,17 +114,30 @@ func dress_world() -> void:
 	moon.shadow_bias = 0.12
 	moon.shadow_normal_bias = 1.8
 	add_child(moon)
-	if "--low-fx" not in OS.get_cmdline_user_args():
-		var grade_layer := CanvasLayer.new()
-		grade_layer.layer = 0
-		add_child(grade_layer)
-		var grade := ColorRect.new()
-		grade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		grade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var material := ShaderMaterial.new()
-		material.shader = preload("res://city_grade.gdshader")
-		grade.material = material
-		grade_layer.add_child(grade)
+	# Always retain the world-only grade so the 0 PA state also works in low FX.
+	var grade_layer := CanvasLayer.new()
+	grade_layer.layer = 0
+	add_child(grade_layer)
+	var grade := ColorRect.new()
+	grade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	grade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grade_material = ShaderMaterial.new()
+	grade_material.shader = preload("res://city_grade.gdshader")
+	if "--low-fx" in OS.get_cmdline_user_args():
+		grade_material.set_shader_parameter("bloom_strength", 0.0)
+	grade.material = grade_material
+	grade_layer.add_child(grade)
+
+func set_actions_exhausted(exhausted: bool) -> void:
+	var target := 0.0 if exhausted else 1.0
+	if grade_material == null or is_equal_approx(world_saturation, target):
+		return
+	if saturation_tween != null:
+		saturation_tween.kill()
+	saturation_tween = create_tween()
+	saturation_tween.tween_method(func(value: float):
+		world_saturation = value
+		grade_material.set_shader_parameter("saturation", value), world_saturation, target, 0.45)
 
 func build(grid: Array) -> void:
 	var rows := grid.size()
@@ -200,7 +216,7 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 	elif id == "victim_street":
 		entrance.x = 4.6
 	elif id == "cabaret":
-		entrance = Vector3(1.2, 0.25, 15.45)
+		entrance = Vector3(1.2, 0.25, 15.45) if parcel_spans.has(id) else Vector3(0, 0.25, 3.35)
 	root.set_meta("entrance", entrance)
 	add_child(root)
 	var h := absi(hash(id))
@@ -208,7 +224,7 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 	var height := 4.6 + float(h % 9) * 1.05
 	if scenery and h % 3 != 0:
 		height = 2.6 + float(h % 4) * 0.8
-	if id == "bar" or id == "cabaret" or id == "den":
+	if id in ["bar", "cabaret", "den", "restaurant"]:
 		height = 3.2 + float(h % 3) * 0.6
 	elif id == "alley" or id == "crime_scene":
 		height = 3.4
@@ -216,8 +232,10 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 		height = 10.2
 	elif id == "victim_street":
 		height = 8.0
-	elif id == "victim_house":
+	elif id == "victim_house" or id == "promenade":
 		height = 6.7
+	elif id in ["lab", "morgue"]:
+		height = 4.6
 	elif id == "hospital":
 		height = 5.4
 	var color: Color = PALETTES[h % PALETTES.size()]
@@ -225,6 +243,8 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 	var accent: Color = ADS[ad][3]
 	if id == "bar":
 		accent = CYAN
+	elif id == "restaurant":
+		accent = AMBER
 	elif id == "cabaret" or id == "den":
 		accent = PINK
 	_begin()
@@ -275,6 +295,11 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 			_box(Vector3(1.3 + i * 2.8, 0.53, 2.9), Vector3(1.4, 0.07, 0.5), Color("315041"))
 		_box(Vector3(8.2, 3.8, 1.6), Vector3(1.15, 0.23, 0.04), CYAN, "light")
 		_box(Vector3(8.2, 3.8, 1.62), Vector3(0.23, 1.15, 0.04), CYAN, "light")
+		# A genuinely separate medical-services entrance on the same frontage.
+		_box(Vector3(10.2, 1.05, 2.15), Vector3(1.45, 2.1, 0.08), Color("162533"))
+		for x in [9.4, 11.0]:
+			_box(Vector3(x, 1.08, 2.23), Vector3(0.06, 2.15, 0.05), CYAN, "light")
+		_box(Vector3(10.2, 2.18, 2.23), Vector3(1.65, 0.06, 0.05), CYAN, "light")
 	elif recipe["shape"] == "terraced":
 		var terrace_y: float = volumes[0]["size"].y + 0.6
 		for x in [-0.45, 1.4]:
@@ -381,10 +406,12 @@ func _apply_building_opacity(form: Dictionary, opacity: float) -> void:
 	for label in form.labels:
 		label.modulate.a = opacity
 
-func navigation_marker(at: Vector3, current: bool = false) -> Node3D:
+func navigation_marker(at: Vector3, current: bool = false, accent: Color = Color.TRANSPARENT) -> Node3D:
 	var root := Node3D.new()
 	root.position = at
 	var color := Color("ffd386") if current else CYAN
+	if accent.a > 0:
+		color = accent
 	_begin()
 	# Illuminated doormat and two chevrons point towards the actual entrance.
 	for x in [-0.85, 0.85]:
@@ -415,9 +442,9 @@ func _building_recipe(id: String, h: int, height: float) -> Dictionary:
 			{"at": Vector3(PITCH + 1.0, 0, -0.1), "size": Vector3(2.6, 4.1, 5.6)}]}
 	var shapes := ["crossbar", "longitudinal", "courtyard", "terraced", "twins", "corner"]
 	var shape: String = shapes[h % shapes.size()]
-	var landmarks := {"bar": "crossbar", "cabaret": "courtyard", "den": "corner",
+	var landmarks := {"bar": "crossbar", "cabaret": "courtyard", "den": "corner", "restaurant": "corner",
 		"hospital": "terraced", "police": "terraced", "cctv": "longitudinal",
-		"victim_street": "longitudinal", "victim_house": "crossbar",
+		"victim_street": "longitudinal", "victim_house": "crossbar", "promenade": "crossbar", "lab": "corner", "morgue": "terraced",
 		"crime_scene": "courtyard", "alley": "twins"}
 	shape = landmarks.get(id, shape)
 	var volumes: Array = []
@@ -838,6 +865,7 @@ func finish() -> void:
 	_flush(self, "SharedStreetscape")
 	streets = {}
 	_connect_skybridge("victim_street", "victim_house")
+	_connect_skybridge("victim_street", "promenade")
 
 func _connect_skybridge(first: String, second: String) -> void:
 	if not building_forms.has(first) or not building_forms.has(second):
@@ -976,7 +1004,7 @@ func _panel(root: Node3D, at: Vector3, size: Vector2, ad: int, angle: float = 0.
 	mesh_count += 1
 
 func _shop_sign(root: Node3D, id: String, color: Color) -> void:
-	var names := {"bar": "LE NÉON BLEU", "cabaret": "LE PALACE", "den": "LUCKY 7", "police": "NCPD / SECTOR 07", "hospital": "CLINIQUE NEXUS", "cctv": "CITY WATCH", "victim_street": "VERLAINE", "victim_house": "RÉSIDENCE 03", "alley": "NIGHT MARKET", "crime_scene": "SECTOR 07"}
+	var names := {"bar": "LE NÉON BLEU", "restaurant": "LE COMPTOIR", "cabaret": "LE PALACE", "den": "LUCKY 7", "police": "NCPD / SECTOR 07", "hospital": "CLINIQUE NEXUS", "cctv": "CITY WATCH", "victim_street": "VERLAINE", "victim_house": "RÉSIDENCE 03", "alley": "NIGHT MARKET", "crime_scene": "SECTOR 07", "promenade": "CANAL / RÉSIDENCES", "lab": "NEXUS LAB", "morgue": "MÉDECINE LÉGALE"}
 	var sign := Label3D.new()
 	sign.text = names.get(id, "NEXUS")
 	sign.position = Vector3(0, 1.62, 3.0)

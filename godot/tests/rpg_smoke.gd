@@ -40,8 +40,8 @@ func _capture(name: String) -> void:
 			suffix = arg.trim_prefix("--capture-suffix=")
 	root.get_texture().get_image().save_png("res://art/captures/" + name + suffix + ".png")
 
-func _swipe_notebook() -> void:
-	var at: Vector2 = client.notebook_scroll.get_global_rect().get_center() + Vector2(0, 60)
+func _swipe_notebook(container: ScrollContainer) -> void:
+	var at: Vector2 = container.get_global_rect().get_center() + Vector2(0, 60)
 	var touch := InputEventScreenTouch.new()
 	touch.position = root.get_final_transform() * at
 	touch.index = 0
@@ -92,7 +92,8 @@ func _run() -> void:
 			return
 		if entry.kind == "district" and entry.region == "bar":
 			district = entry.button
-			if not "Le Néon Bleu" in district.get_meta("locations") or entry.target != entry.button:
+			var descriptions: Array = district.get_meta("locations")
+			if descriptions.is_empty() or not str(descriptions[0]).begins_with("Le Néon Bleu · ") or int(district.get_meta("presence_count", -1)) != int(client.view.presence.districts.bar.count) or entry.target != entry.button:
 				_fail("District description is missing its places or created a remote ground target")
 				return
 	for marker in client.navigation_markers.get_children():
@@ -187,7 +188,8 @@ func _run() -> void:
 		_fail("Notebook must include every known or unknown person")
 		return
 	for row in client.view.notebook:
-		var portrait: Control = client.notebook_cards[int(row.id)].get_child(0).get_child(0).get_child(0)
+		client._select_notebook_suspect(int(row.id))
+		var portrait: Control = client.notebook_cards[int(row.id)].get_child(0).get_child(0).get_child(0).get_child(0)
 		if portrait.unknown != (row.name == "?"):
 			_fail("Unknown notebook portraits must not show a person's appearance")
 			return
@@ -198,9 +200,14 @@ func _run() -> void:
 		if row.name != "?" and (address == null or JSON.stringify(address.get_meta("residence")) != JSON.stringify(row.home)):
 			_fail("An identified person's card must show their actual residence")
 			return
-	await _swipe_notebook()
+	for row in client.view.notebook:
+		if row.name != "?":
+			client._select_notebook_suspect(int(row.id))
+			break
+	await process_frame
+	await _swipe_notebook(client.notebook_suspect_scroll)
 	await create_timer(0.15).timeout
-	if client.notebook_scroll.scroll_vertical < 40 or not client.notebook_page.visible:
+	if client.notebook_suspect_scroll.scroll_vertical < 40 or not client.notebook_page.visible:
 		_fail("Dragging notebook cards did not scroll naturally")
 		return
 	await _capture("rpg-notebook-scroll-phone")
@@ -216,6 +223,8 @@ func _run() -> void:
 		_fail("Expected an identified suspect for manual notebook notes")
 		return
 	var before := JSON.stringify(client.view)
+	client._select_notebook_suspect(noted_id)
+	await process_frame
 	var note: Button = client.notebook_cards[noted_id].get_meta("note_button")
 	await _tap(note)
 	if not client.manual_exclusions.has(str(noted_id)) or client.notebook_cards[noted_id].modulate.a > 0.5 or JSON.stringify(client.view) != before or client.solo_busy:
@@ -229,6 +238,9 @@ func _run() -> void:
 	if not client.manual_exclusions.has(str(noted_id)) or client.notebook_cards[noted_id].modulate.a > 0.5:
 		_fail("Personal exclusions did not survive reloading notes")
 		return
+	client._select_notebook_suspect(noted_id)
+	await create_timer(0.2).timeout
+	client.notebook_scroll.ensure_control_visible(client.notebook_cards[noted_id].get_meta("note_button"))
 	await create_timer(0.2).timeout
 	await _tap(client.notebook_cards[noted_id].get_meta("note_button"))
 	if client.manual_exclusions.has(str(noted_id)) or client.notebook_cards[noted_id].modulate.a != 1.0:
@@ -246,19 +258,22 @@ func _run() -> void:
 	client.view.notebook = notebook_backup
 	client._draw_notebook()
 	# Notes are scoped to this investigation, not a new seed or another player.
-	var old_seed = client.view.solo.seed
-	client.view.solo.seed = int(old_seed) + 100000
+	var old_case: String = client.view.solo.case_id
+	client.view.solo.case_id = old_case + "-other"
 	client._load_case_notes()
 	if not client.manual_exclusions.is_empty():
 		_fail("Personal notes leaked into another investigation")
 		return
-	client.view.solo.seed = old_seed
+	client.view.solo.case_id = old_case
 	client._load_case_notes()
+	client._select_notebook_suspect(noted_id)
 	client.touch_gestures.cancel_inertia()
 	client.notebook_scroll.scroll_vertical = 0
 	await create_timer(0.3).timeout
 	await _capture("residence-notebook-phone")
 	var residence_button: Button = client.notebook_cards[noted_id].get_meta("home_button")
+	client.notebook_scroll.ensure_control_visible(residence_button)
+	await create_timer(0.2).timeout
 	var residence: Dictionary = residence_button.get_meta("residence")
 	before = JSON.stringify(client.view)
 	await _tap(residence_button)

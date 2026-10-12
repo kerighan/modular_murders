@@ -17,15 +17,22 @@ var choices_scroll: ScrollContainer
 var next_button: Button
 var shade: ColorRect
 var current_person := {}
+var current_terminal := false
 var options := []
 var active := false
 var waiting := false
 var reading := false
 var selecting := false
 var choosing_subject := false
+var remaining_pa := -1
 var pages := []
 var reveal := 0.0
 var full_text := ""
+var pending_thought := {}
+var reply_person := {}
+var reply_context := ""
+var thinking := false
+var scene_beats: Array = []
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -72,6 +79,7 @@ func _ready() -> void:
 	context.add_theme_font_size_override("font_size", 12)
 	context.modulate = Color("87b5c4")
 	context.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	context.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	face.add_child(context)
 	var column := VBoxContainer.new()
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -120,36 +128,74 @@ func _process(delta: float) -> void:
 func _person(person: Dictionary) -> void:
 	current_person = person.duplicate(true)
 	portrait.look = person.get("look", "")
-	portrait.identity = int(person.get("id", 0))
+	portrait.appearance = person.get("appearance", {})
 	portrait.detective = person.get("detective", false)
+	portrait.unknown = person.get("profile_known", true) == false
+	portrait.identity = int(person.get("portrait_id", person.get("id", 0)))
+	portrait.accent = Color("63e1ec") if portrait.detective else Color("ee4985") if person.get("service", false) else Color("ffd386")
 	portrait.queue_redraw()
 	speaker.text = str(person.get("name")) if person.get("name") != null else "Inconnu"
+	speaker.add_theme_color_override("font_color", portrait.accent)
+	var style: StyleBoxFlat = panel.get_theme_stylebox("panel").duplicate()
+	style.border_color = portrait.accent
+	style.bg_color = Color("0b2530") if portrait.detective else Color("251724") if person.get("service", false) else Color("0b1a29")
+	panel.add_theme_stylebox_override("panel", style)
 
 func preview(person: Dictionary, actions: Array) -> void:
+	current_terminal = false
+	scene_beats.clear()
+	pending_thought.clear()
+	thinking = false
 	_person(person)
 	active = false
 	waiting = false
 	reading = false
 	pages.clear()
 	options = actions.duplicate(true)
-	context.text = "Choisir une action"
+	context.text = str(person.role) + " · Choisir une action" if person.has("role") else "Choisir une action"
 	question.visible = false
 	speech.text = person.get("look", "")
 	speech.visible_characters = -1
 	show()
 	_show_options(false)
 
+func show_service_idle(person: Dictionary) -> void:
+	preview(person, [])
+	context.text = str(person.get("role", "Personnel")) + " · " + str(person.get("status", "Source d'information"))
+	_set_text(person.get("idle_text", "Bonsoir. Vous vouliez me parler ?"), true)
+
 func show_cue(cue: Dictionary, actions: Array) -> void:
+	remaining_pa = int(cue.get("remaining_pa", -1))
+	current_terminal = cue.get("terminal", false)
+	scene_beats.clear()
+	pending_thought = cue.get("thought", {}).duplicate(true)
+	thinking = false
+	reply_person = cue.person.duplicate(true)
 	_person(cue.person)
 	active = cue.get("active", false)
 	waiting = false
 	pages.clear()
 	options = actions.duplicate(true)
 	context.text = "%d question%s restante%s" % [cue.get("remaining", 0), "s" if cue.get("remaining", 0) != 1 else "", "s" if cue.get("remaining", 0) != 1 else ""] if active else "Fin de conversation"
+	if cue.has("context"):
+		context.text = str(cue.context)
+	if active and remaining_pa == 0:
+		context.text += " · 0 PA · Relecture gratuite"
+	reply_context = context.text
 	question.text = "Vous · " + str(cue.question) if cue.get("question") != null else ""
 	question.visible = not question.text.is_empty()
 	show()
-	if cue.stage == "greeting":
+	if cue.stage == "scene":
+		active = false
+		options.clear()
+		context.text = "Conversation surprise"
+		question.hide()
+		scene_beats = cue.get("beats", []).duplicate(true)
+		if not scene_beats.is_empty():
+			var beat: Dictionary = scene_beats.pop_front()
+			_person(beat.person)
+			_set_text(str(beat.text), true)
+	elif cue.stage == "greeting":
 		_set_text("Choisissez votre première question.", false)
 		_show_options(true)
 	elif cue.stage == "reply":
@@ -160,6 +206,10 @@ func show_cue(cue: Dictionary, actions: Array) -> void:
 		_set_text("Vous laissez partir votre interlocuteur.", true)
 
 func show_result(lines: Array, player_name: String) -> void:
+	current_terminal = false
+	scene_beats.clear()
+	pending_thought.clear()
+	thinking = false
 	_person({"name": "Enquête", "look": "", "id": 0, "detective": true})
 	active = false
 	waiting = false
@@ -175,7 +225,15 @@ func _set_text(text: String, animate: bool) -> void:
 	full_text = text
 	selecting = false
 	choosing_subject = false
-	speech.text = text
+	speech.show()
+	panel.offset_top = -318 if phone_ui else -332
+	speech.clear()
+	if thinking:
+		speech.push_italics()
+		speech.add_text(text)
+		speech.pop()
+	else:
+		speech.text = text
 	reveal = 0.0
 	reading = animate and not text.is_empty()
 	speech.visible_characters = 0 if reading else -1
@@ -188,15 +246,27 @@ func _set_text(text: String, animate: bool) -> void:
 func _finish_reveal() -> void:
 	reading = false
 	speech.visible_characters = -1
-	next_button.text = "Question suivante  ▾" if active else "Continuer  ▾" if not pages.is_empty() else "Retour  ▾"
+	next_button.text = "Continuer  ▾" if not scene_beats.is_empty() or not pending_thought.is_empty() or not pages.is_empty() else "Choisir un enregistrement  ▾" if active and current_terminal else "Question suivante  ▾" if active else "Retour  ▾"
 
 func advance() -> void:
 	if waiting:
 		return
 	if reading:
 		_finish_reveal()
+	elif not scene_beats.is_empty():
+		var beat: Dictionary = scene_beats.pop_front()
+		_person(beat.person)
+		_set_text(str(beat.text), true)
 	elif not pages.is_empty():
 		_set_text(str(pages.pop_front()), true)
+	elif not pending_thought.is_empty():
+		var thought := pending_thought.duplicate(true)
+		pending_thought.clear()
+		thinking = true
+		_person(thought.person)
+		context.text = "Pensée"
+		question.hide()
+		_set_text(str(thought.text), true)
 	elif choosing_subject:
 		_show_options(active)
 	elif selecting and active:
@@ -204,13 +274,20 @@ func advance() -> void:
 		if not stop.is_empty():
 			_choose(stop)
 	elif active:
-		_set_text("Que souhaitez-vous lui demander ?", false)
+		if thinking:
+			thinking = false
+			_person(reply_person)
+			context.text = reply_context
+		_set_text("Quel enregistrement souhaitez-vous consulter ?" if current_terminal else "Que souhaitez-vous lui demander ?", false)
 		_show_options(true)
 	else:
 		hide()
 		closed.emit()
 
 func _show_options(conversation: bool) -> void:
+	panel.offset_top = -398 if phone_ui else -390
+	speech.hide()
+	question.hide()
 	selecting = true
 	choosing_subject = false
 	for child in choices.get_children():
@@ -218,6 +295,9 @@ func _show_options(conversation: bool) -> void:
 		child.queue_free()
 	var has_subjects := false
 	var has_documents := false
+	var has_background := false
+	var has_police_records := false
+	var has_verifications := false
 	var folders := {}
 	for option in options:
 		var key: Array = option[0]
@@ -226,10 +306,20 @@ func _show_options(conversation: bool) -> void:
 		if key[0] == "talk_about":
 			has_subjects = true
 			continue
+		# Relationship is a primary investigation question, not biography.
+		if key[0] == "ask" and key.size() > 1 and key[1] in ["work", "habits"]:
+			has_background = true
+			continue
+		if key[0] == "ask" and key.size() > 2 and key[1] == "service_action" and str(key[2]).begins_with("record:"):
+			has_police_records = true
+			continue
+		if key[0] == "ask" and key.size() > 2 and key[1] == "service_action" and str(key[2]).begins_with("verify:"):
+			has_verifications = true
+			continue
 		if key[0] == "confront":
 			has_documents = true
 			continue
-		if key[0] in ["file", "record", "accuse", "try_code"]:
+		if key[0] in ["file", "record", "accuse", "try_code", "verify"]:
 			folders[key[0]] = true
 			continue
 		var button := Button.new()
@@ -239,6 +329,11 @@ func _show_options(conversation: bool) -> void:
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size", 15)
 		button.set_meta("key", key.duplicate(true))
+		button.disabled = option.size() > 2 and not option[2].get("available", true)
+		if button.disabled:
+			button.tooltip_text = "Question disponible au prochain tour"
+		elif option.size() > 2 and option[2].get("cost", 1) == 0 and key[0] in ["ask", "talk_about"]:
+			button.tooltip_text = "Consultation gratuite"
 		button.pressed.connect(_choose.bind(key.duplicate(true)))
 		choices.add_child(button)
 	if has_subjects:
@@ -249,30 +344,56 @@ func _show_options(conversation: bool) -> void:
 		subjects.set_meta("subject_picker", true)
 		subjects.pressed.connect(_show_people_questions)
 		choices.add_child(subjects)
+	if has_background:
+		var background := Button.new()
+		background.text = "Votre quotidien…"
+		background.custom_minimum_size.y = 56
+		background.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		background.set_meta("background_picker", true)
+		background.pressed.connect(_show_people_questions.bind("background"))
+		choices.add_child(background)
+	if has_police_records:
+		var records := Button.new()
+		records.text = "Casiers & fiches d'identité…"
+		records.custom_minimum_size.y = 56
+		records.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		records.set_meta("police_records_picker", true)
+		records.pressed.connect(_show_people_questions.bind("police_records"))
+		choices.add_child(records)
 	if has_documents:
 		var documents := Button.new()
-		documents.text = "Présenter un document…"
+		documents.text = "Montrer un papier…"
 		documents.custom_minimum_size.y = 56
 		documents.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		documents.set_meta("document_picker", true)
 		documents.pressed.connect(_show_people_questions.bind("confront"))
 		choices.add_child(documents)
+	if has_verifications:
+		var checks := Button.new()
+		checks.text = "Vérifier un récit…"
+		checks.custom_minimum_size.y = 56
+		checks.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		checks.set_meta("verification_picker", true)
+		checks.pressed.connect(_show_people_questions.bind("verifications"))
+		choices.add_child(checks)
 	for kind in folders:
 		var folder := Button.new()
-		folder.text = {"file": "Dossiers médicaux…", "record": "Casiers & identités…", "accuse": "Accuser une personne…", "try_code": "Codes du téléphone…"}[kind]
+		folder.text = {"file": "Dossiers médicaux…", "record": "Casiers & identités…", "accuse": "Accuser une personne…", "try_code": "Codes du téléphone…", "verify": "Vérifier un alibi…"}[kind]
 		folder.custom_minimum_size.y = 56
 		folder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		folder.set_meta("action_folder", kind)
 		folder.pressed.connect(_show_people_questions.bind(str(kind)))
 		choices.add_child(folder)
 	choices_scroll.visible = choices.get_child_count() > 0
+	choices_scroll.custom_minimum_size.y = minf(252, ceilf(choices.get_child_count() / 2.0) * 64)
+	choices_scroll.scroll_vertical = 0
 	next_button.visible = true
 	next_button.disabled = false
 	var stop: Array = []
 	for option in options:
 		if option[0][0] == "stop":
 			stop = option[0]
-	next_button.text = "Laisser partir" if not stop.is_empty() and conversation else "Retour"
+	next_button.text = "Fermer les archives" if current_terminal and not stop.is_empty() else "Revenir à la ville" if remaining_pa == 0 and not stop.is_empty() and conversation else "Laisser partir" if not stop.is_empty() and conversation else "Retour"
 	next_button.set_meta("stop", stop)
 
 func _show_people_questions(kind: String = "talk_about") -> void:
@@ -282,7 +403,16 @@ func _show_people_questions(kind: String = "talk_about") -> void:
 		child.queue_free()
 	for option in options:
 		var key: Array = option[0]
-		if key[0] != kind:
+		if kind == "background":
+			if key[0] != "ask" or key.size() < 2 or key[1] not in ["work", "habits"]:
+				continue
+		elif kind == "police_records":
+			if key[0] != "ask" or key.size() < 3 or key[1] != "service_action" or not str(key[2]).begins_with("record:"):
+				continue
+		elif kind == "verifications":
+			if key[0] != "ask" or key.size() < 3 or key[1] != "service_action" or not str(key[2]).begins_with("verify:"):
+				continue
+		elif key[0] != kind:
 			continue
 		var button := Button.new()
 		button.text = str(option[1]).get_slice(" : ", 1) if " : " in str(option[1]) else str(option[1])
@@ -291,14 +421,23 @@ func _show_people_questions(kind: String = "talk_about") -> void:
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size", 15)
 		button.set_meta("key", key.duplicate(true))
+		button.disabled = option.size() > 2 and not option[2].get("available", true)
+		if button.disabled:
+			button.tooltip_text = "Question disponible au prochain tour"
+		elif option.size() > 2 and option[2].get("cost", 1) == 0:
+			button.tooltip_text = "Réponse déjà obtenue · aucun PA ni temps consommé"
 		button.pressed.connect(_choose.bind(key.duplicate(true)))
 		choices.add_child(button)
 	choices_scroll.scroll_vertical = 0
+	choices_scroll.custom_minimum_size.y = minf(252, ceilf(choices.get_child_count() / 2.0) * 64)
 	next_button.text = "Retour aux questions"
 
 func _choose(key: Array) -> void:
 	if waiting:
 		return
+	for option in options:
+		if option[0] == key and option.size() > 2 and not option[2].get("available", true):
+			return
 	waiting = true
 	reading = false
 	for option in options:
@@ -306,6 +445,7 @@ func _choose(key: Array) -> void:
 			question.text = "Vous · " + str(option[1])
 			question.visible = true
 	choices_scroll.visible = false
+	speech.show()
 	speech.text = "…"
 	speech.visible_characters = -1
 	next_button.text = "En attente…"

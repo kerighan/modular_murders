@@ -10,6 +10,7 @@ var sheet: Control
 var modal_layer: CanvasLayer
 var actors: Array = []
 var phone_ui := false
+var pinned_region := ""
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -63,9 +64,11 @@ func add_actor(at: Vector3, name_text: String, avatar: Control, you: bool, follo
 	add_child(badge)
 	actors.append({"at": at, "badge": badge, "follow": follow})
 
-func add_destination(at: Vector3, title: String, subtitle: String, callback: Callable, current: bool = false, available: bool = true, offscreen: bool = true) -> void:
+func add_destination(at: Vector3, title: String, subtitle: String, callback: Callable, current: bool = false, available: bool = true, offscreen: bool = true, presence: Dictionary = {}, accent: Color = Color.TRANSPARENT) -> void:
 	var color := Color("8196a0") if not available else GOLD if current else CYAN
-	var button := _button(title, subtitle, color)
+	if available and accent.a > 0:
+		color = accent
+	var button := _button(title, subtitle, color, presence)
 	button.disabled = not available
 	if callback.is_valid():
 		button.pressed.connect(callback)
@@ -94,21 +97,27 @@ func add_destination(at: Vector3, title: String, subtitle: String, callback: Cal
 	move_child(target, 0) # Card hit areas always have priority over ground targets.
 	entries.append({"at": at, "button": button, "target": target, "color": color, "screen": Vector2.ZERO, "offscreen": offscreen, "kind": "entrance"})
 
-func add_district(at: Vector3, title: String, locations: Array, cost: int, callback: Callable, region: String) -> void:
+func add_district(at: Vector3, title: String, locations: Array, cost: int, callback: Callable, region: String, available: bool = true, presence: Dictionary = {}, crime: bool = false) -> void:
 	# One quiet district description, not an entrance or a ground arrow.
 	var button := Button.new()
-	button.custom_minimum_size = Vector2(208, 42 + mini(locations.size(), 3) * 19)
+	button.custom_minimum_size = Vector2(208, 42 + mini(locations.size(), 3) * 19 + (28 if presence.has("count") else 0))
 	button.size = button.custom_minimum_size
+	button.disabled = not available
 	button.tooltip_text = "Quartier : " + title + "\n" + "\n".join(locations) + "\nAller (%d PA)" % cost
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button.set_meta("region", region)
 	button.set_meta("locations", locations.duplicate())
+	button.set_meta("crime_scene", crime)
+	var accent := Color("ff7889") if crime else CYAN
 	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color(0.02, 0.055, 0.085, 0.28 if state == "normal" else 0.75)
 		style.set_corner_radius_all(7)
-		style.border_color = Color(CYAN, 0.5)
-		style.border_width_left = 2 if state in ["hover", "pressed", "focus"] else 0
+		style.border_color = Color(accent, 0.7)
+		style.border_width_left = 3 if crime else 2 if state in ["hover", "pressed", "focus"] else 0
+		if crime:
+			style.shadow_color = Color(accent, 0.18)
+			style.shadow_size = 7
 		button.add_theme_stylebox_override(state, style)
 	var column := VBoxContainer.new()
 	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -120,9 +129,9 @@ func add_district(at: Vector3, title: String, locations: Array, cost: int, callb
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(column)
 	var heading := Label.new()
-	heading.text = title.to_upper()
+	heading.text = "SCÈNE DU CRIME" if crime else title.to_upper()
 	heading.add_theme_font_size_override("font_size", 12)
-	heading.add_theme_color_override("font_color", CYAN)
+	heading.add_theme_color_override("font_color", accent)
 	heading.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(heading)
@@ -136,19 +145,49 @@ func add_district(at: Vector3, title: String, locations: Array, cost: int, callb
 	description.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	description.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(description)
+	if presence.has("count"):
+		column.add_child(_presence_row(presence))
+		button.set_meta("presence_count", int(presence.count))
 	var budget := Label.new()
-	budget.text = "%d PA · rejoindre le quartier" % cost
+	budget.text = "%d PA · rejoindre le quartier" % cost if available else "REPÉRÉ · trajet indisponible (%d PA)" % cost
 	budget.add_theme_font_size_override("font_size", 10)
 	budget.add_theme_color_override("font_color", Color("73a2b2"))
 	budget.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(budget)
-	button.pressed.connect(callback)
+	if callback.is_valid():
+		button.pressed.connect(callback)
 	add_child(button)
-	entries.append({"at": at, "button": button, "target": button, "color": CYAN, "screen": Vector2.ZERO, "offscreen": false, "kind": "district", "region": region})
+	entries.append({"at": at, "button": button, "target": button, "color": accent, "screen": Vector2.ZERO, "offscreen": false, "kind": "district", "region": region})
 
-func _button(title: String, subtitle: String, color: Color) -> Button:
+func _presence_row(presence: Dictionary) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 3)
+	var people: Array = presence.get("people", [])
+	for person in people.slice(0, 4):
+		var avatar := preload("res://voxel_avatar.gd").new()
+		avatar.custom_minimum_size = Vector2(22, 25)
+		avatar.identity = int(person.get("id", 0))
+		avatar.look = str(person.get("look", ""))
+		avatar.appearance = person.get("appearance", {})
+		avatar.unknown = not person.get("known", false) or avatar.look.is_empty()
+		avatar.accent = GOLD
+		avatar.tooltip_text = str(person.name) if person.get("name") != null else "Personne non identifiée"
+		row.add_child(avatar)
+	var count := Label.new()
+	var n := int(presence.get("count", 0))
+	count.text = "Aucun présent" if n == 0 else "%d présent%s" % [n, "s" if n > 1 else ""]
+	if presence.get("scope", "") == "suspects":
+		count.text = "Aucun suspect" if n == 0 else "%d suspect%s" % [n, "s" if n > 1 else ""]
+	count.add_theme_font_size_override("font_size", 11)
+	count.add_theme_color_override("font_color", GOLD if n > 0 else Color("708a98"))
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(count)
+	return row
+
+func _button(title: String, subtitle: String, color: Color, presence: Dictionary = {}) -> Button:
 	var button := Button.new()
-	button.custom_minimum_size = Vector2(216, 72)
+	button.custom_minimum_size = Vector2(216, 98 if presence.has("count") else 72)
 	button.size = button.custom_minimum_size
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button.tooltip_text = title + " : " + subtitle
@@ -175,7 +214,7 @@ func _button(title: String, subtitle: String, color: Color) -> Button:
 	text.offset_left = 48
 	text.offset_right = -12
 	text.offset_top = 14
-	text.offset_bottom = 59
+	text.offset_bottom = 88 if presence.has("count") else 59
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text.add_theme_constant_override("separation", 2)
 	button.add_child(text)
@@ -196,6 +235,9 @@ func _button(title: String, subtitle: String, color: Color) -> Button:
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text.add_child(name_label)
+	if presence.has("count"):
+		text.add_child(_presence_row(presence))
+		button.set_meta("presence_count", int(presence.count))
 	return button
 
 func _process(_delta: float) -> void:
@@ -216,7 +258,15 @@ func _process(_delta: float) -> void:
 		actor.badge.position = point - Vector2(actor.badge.size.x / 2, actor.badge.size.y + 8)
 		if actor.badge.visible:
 			occupied.append(Rect2(actor.badge.position, actor.badge.size).grow(8))
-	for entry in entries:
+	var ordered := entries.duplicate()
+	var center := viewport_size * 0.5
+	ordered.sort_custom(func(a, b):
+		var pinned_a: bool = not pinned_region.is_empty() and a.get("region", "") == pinned_region
+		var pinned_b: bool = not pinned_region.is_empty() and b.get("region", "") == pinned_region
+		if pinned_a != pinned_b:
+			return pinned_a
+		return camera.unproject_position(a.at).distance_squared_to(center) < camera.unproject_position(b.at).distance_squared_to(center))
+	for entry in ordered:
 		var button: Button = entry.button
 		var point := camera.unproject_position(entry.at)
 		var in_view := Rect2(Vector2(20, 94), viewport_size - Vector2(40, 190)).has_point(point)
@@ -256,10 +306,15 @@ func _process(_delta: float) -> void:
 			if cost < best_cost:
 				best_cost = cost
 				best = candidate
-		if best_cost >= 1000000.0:
+		var pinned: bool = not pinned_region.is_empty() and entry.get("region", "") == pinned_region
+		if best_cost == INF or (best_cost >= 1000000.0 and not pinned):
 			button.visible = false # The glowing ground entrance stays touchable.
 			continue
 		button.position = best
+		if pinned:
+			for actor in actors:
+				if Rect2(best, button.size).intersects(actor.badge.get_rect()):
+					actor.badge.hide()
 		occupied.append(Rect2(best, button.size))
 	queue_redraw()
 
@@ -336,7 +391,7 @@ func show_choices(title: String, choices: Array) -> void:
 	scroll.add_child(list)
 	for choice in choices:
 		var available: bool = choice.get("available", true)
-		var button := _button(choice.get("hint", "Aller à"), choice.label, CYAN if available else Color("8196a0"))
+		var button := _button(choice.get("hint", "Aller à"), choice.label, CYAN if available else Color("8196a0"), choice.get("presence", {}))
 		button.disabled = not available
 		var row_style := StyleBoxFlat.new()
 		row_style.bg_color = Color("122b39")

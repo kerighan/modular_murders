@@ -32,9 +32,9 @@ public final class NexusSolo extends GodotPlugin {
             try {
                 if (!Python.isStarted()) Python.start(new AndroidPlatform(context));
                 close_session();
-                String save = new File(context.getFilesDir(), "nexus-solo.json").getAbsolutePath();
+                String save = new File(context.getFilesDir(), "nexus-causal-solo.json").getAbsolutePath();
                 session = Python.getInstance().getModule("solo_runtime")
-                    .callAttr("SoloSession", save, seed, name);
+                    .callAttr("SoloSession", save, seed, name, "causal");
             } catch (Exception e) {
                 failure = "Démarrage solo impossible : " + e;
             }

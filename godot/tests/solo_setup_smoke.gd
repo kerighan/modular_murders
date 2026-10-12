@@ -38,14 +38,16 @@ func _run() -> void:
 		_fail("Fresh solo setup did not open")
 		return
 	await create_timer(0.3).timeout
-	await _tap(client.item_buttons["forensic_kit"])
-	await _tap(client.item_buttons["taxi"])
+	var equipment := ["search", "rapport"] if client.item_buttons.has("search") else ["forensic_kit", "taxi"]
+	for item in equipment:
+		await _tap(client.item_buttons[item])
 	if client.chosen.size() != 2:
 		_fail("Preparation equipment buttons are not touchable")
 		return
-	client.setup_scroll.ensure_control_visible(client.start_buttons["victim_street"])
+	var start_place: String = client.view.setup.get("default_start", "victim_street")
+	client.setup_scroll.ensure_control_visible(client.start_buttons[start_place])
 	await create_timer(0.2).timeout
-	await _tap(client.start_buttons["victim_street"])
+	await _tap(client.start_buttons[start_place])
 	if client.start_btn.disabled:
 		_fail("Preparation start button remained disabled")
 		return
@@ -54,13 +56,20 @@ func _run() -> void:
 		await create_timer(0.05).timeout
 		if not client.view.has("setup"):
 			break
-	if client.view.has("setup") or client.view["place"] != "victim_street":
+	if client.view.has("setup") or client.view["place"] != start_place:
 		_fail("Preparation did not start the solo game")
 		return
 	var seed: int = client.view["solo"]["seed"]
+	client.dialogue.hide()
 	client.notebook_page.visible = true
 	await create_timer(0.2).timeout
-	await _tap(client.new_case_button)
+	await _tap(client.notebook_menu)
+	await create_timer(0.2).timeout
+	if not client.notebook_menu.get_popup().visible:
+		_fail("Compact notebook options did not open")
+		return
+	client.notebook_menu.get_popup().hide()
+	client.notebook_menu.get_popup().id_pressed.emit(1)
 	await create_timer(0.2).timeout
 	if not client.restart_dialog.visible:
 		_fail("New case confirmation did not open")

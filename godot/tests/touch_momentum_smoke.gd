@@ -134,19 +134,23 @@ func _run() -> void:
 	client.cam.size = 43
 	await create_timer(0.3).timeout
 	await _capture("zones-overview-phone")
-	var toggle: Button
-	for button in client.notebook_page.find_children("*", "CheckButton", true, false):
-		if button.text == "Frontières · essai":
-			toggle = button
+	var toggle: MenuButton = client.notebook_menu
 	if toggle == null:
 		_fail("Missing reversible zone experiment toggle")
 		return
 	client.notebook_page.visible = true
+	client.dialogue.hide()
 	await create_timer(0.2).timeout # Hidden containers need a layout pass before tapping.
 	await _capture("zones-notebook-phone")
 	print("Zone toggle: ", toggle.get_global_rect(), " | pressed ", toggle.button_pressed, " | disabled ", toggle.disabled)
 	await _tap(toggle)
-	print("Zone toggle result: ", toggle.button_pressed, " | enabled ", client.board_enabled)
+	if not toggle.get_popup().visible:
+		_fail("Notebook options did not open from a native tap")
+		return
+	# Popup windows route their own input on desktop; select the item by signal.
+	toggle.get_popup().hide()
+	toggle.get_popup().id_pressed.emit(0)
+	print("Zone toggle result: enabled ", client.board_enabled)
 	client.notebook_page.visible = false
 	if client.board_zones.visible or client.board_enabled:
 		_fail("Notebook toggle did not hide zone experiment")
@@ -155,6 +159,8 @@ func _run() -> void:
 	client.notebook_page.visible = true
 	await create_timer(0.2).timeout
 	await _tap(toggle)
+	toggle.get_popup().hide()
+	toggle.get_popup().id_pressed.emit(0)
 	client.notebook_page.visible = false
 	if not client.board_zones.visible or not client.board_enabled:
 		_fail("Notebook toggle did not restore zone experiment")

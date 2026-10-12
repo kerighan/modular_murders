@@ -15,8 +15,8 @@ from game import Game, ITEMS
 from store import Store
 
 
-def run(seed):
-    directory = tempfile.mkdtemp(prefix=f"nexus-v9-cli-{seed}-")
+def run(seed, conversations=False, encounters=False):
+    directory = tempfile.mkdtemp(prefix=f"nexus-v11-cli-{seed}-")
     path = os.path.join(directory, "playtest.loom")
     child = pexpect.spawn(sys.executable, ["cli.py", str(seed), "--offline", "--perfect", "--compact"],
                           env={**os.environ, "NEXUS_SAVE": path, "NO_COLOR": "1"}, encoding="utf-8", timeout=30)
@@ -59,6 +59,8 @@ def run(seed):
             child.expect(pexpect.EOF)
         else:
             prompt()
+        if encounters and key[0] in ("move", "walk") and view().get("arrival_scene"):
+            act(tuple(view()["arrival_scene"]["key"]))
 
     def ready():
         if view()["ap"] == 0:
@@ -94,7 +96,20 @@ def run(seed):
         ready()
         act(("search",))
 
+    def motive_note():
+        return next((n for n in view()["journal"] if n["title"] in
+                     ("Les relances du créancier", "Le courrier à l'avocat", "Une demande d'excuses")), None)
+
     try:
+        if conversations:
+            for place in ("bar", "cabaret"):
+                goto(place)
+                ready()
+                speaker = next((k for k in dict(view()["options"]) if k[0] == "interrogate"), None)
+                if speaker:
+                    act(speaker)
+                    for question in ("link", "grudge", "life"):
+                        act(("ask", question))
         goto("police")
         ready()
         act(("authorize",))
@@ -107,11 +122,11 @@ def run(seed):
             opportunity = note("Qui pouvait ouvrir le coffre ?")
         assert opportunity and len(opportunity["people"]) >= 2
         for destination in opportunity["leads"]:
-            if note("Une trace à replacer dans le temps"):
+            if motive_note():
                 break
             if destination.startswith("house_"):
                 search(destination)
-        motive = note("Une trace à replacer dans le temps")
+        motive = motive_note()
         assert motive
         candidates = set(opportunity["people"]) & set(motive["people"])
         assert len(candidates) >= 2, "Opportunity and motive already identify someone!"
@@ -148,6 +163,7 @@ def run(seed):
             restored = store.load(str(seed))
             assert restored.view(restored.player)["journal"] == view()["journal"]
             assert restored.winner and restored.player.story_resolved
+            assert restored.player.scenes_seen == mirror.player.scenes_seen
         finally:
             store.close()
         print(f"\nPLAYTEST PASS seed={seed} actions={actions} turns={view()['tick'] + 1} notes={len(view()['journal'])} db={path}")
@@ -158,4 +174,4 @@ def run(seed):
 
 
 if __name__ == "__main__":
-    run(int(sys.argv[1]) if len(sys.argv) > 1 else 42)
+    run(int(sys.argv[1]) if len(sys.argv) > 1 else 42, "--conversations" in sys.argv, "--encounters" in sys.argv)

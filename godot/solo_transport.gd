@@ -15,14 +15,15 @@ func start(seed: int, name: String) -> void:
 		failure = "Le moteur solo manque dans cet APK. Utilisez le build android-solo."
 	else:
 		var python := "python3"
-		var save := ProjectSettings.globalize_path("user://solo.json")
+		var engine := "legacy" if "--legacy-engine" in OS.get_cmdline_user_args() else "causal"
+		var save := ProjectSettings.globalize_path("user://causal-solo.json" if engine == "causal" else "user://solo.json")
 		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--python="):
 				python = arg.trim_prefix("--python=")
 			if arg.begins_with("--solo-save="):
 				save = arg.trim_prefix("--solo-save=")
 		var runtime := ProjectSettings.globalize_path("res://../solo_runtime.py")
-		process = OS.execute_with_pipe(python, PackedStringArray(["-u", runtime, "--save", save, "--seed", str(seed)]), false)
+		process = OS.execute_with_pipe(python, PackedStringArray(["-u", runtime, "--save", save, "--seed", str(seed), "--engine", engine]), false)
 		if process.is_empty():
 			failure = "Impossible de démarrer Python pour le test solo desktop."
 

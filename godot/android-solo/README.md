@@ -1,5 +1,153 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.23-causal** : `../builds/nexus-city-solo-debug-v23.apk`.
+Néon Bleu : corps et indices dans une allée dégagée, clients/contacts séparés,
+table déplacée, cibles tactiles distinctes et libellés courts. Objets fixes après
+interaction, transfert du corps inchangé. Compatible v18–v22, même signature.
+Tests natifs et captures desktop 18:9/20:9, avec stress visuel de salle peuplée.
+Pas de téléphone physique ; détails dans `../HANDOFF.md`.
+
+
+Version **0.22-causal** : `../builds/nexus-city-solo-debug-v22.apk`.
+Relation avec la victime en premier, alibi/observations/tensions directement
+accessibles. Relance PNJ « quelque chose à ajouter » supprimée. Toutes les
+premières questions informatives à 1 PA ; relecture gratuite, même à zéro PA.
+Questions payantes grisées, dernier texte lisible puis retour à la ville sans
+fin de tour automatique. Menus secondaires gratuits. Sauvegardes v18–v21
+conservées : les coûts historiques ne sont pas recalculés rétroactivement.
+Tests natifs et captures desktop 18:9/20:9, pas de téléphone physique.
+Voir `../HANDOFF.md` pour le protocole des choix et la reprise des sauvegardes.
+
+Version **0.21-causal** : `../builds/nexus-city-solo-debug-v21.apk`.
+Objets et positions persistants après interaction : seulement les halos/actions
+évoluent. Examiner le corps ne le transforme plus ; transfert à la morgue
+annoncé dans un choix explicite, puis corps visible sur la table d'examen.
+Même état si demandé au légiste. Retour sur les lieux et lecture du rapport
+ne déplacent/recréent pas les objets. Compatible v18–v20, signature inchangée.
+Régressions Python et comparaisons des meshes après touchers natifs, captures
+18:9/20:9 inspectées ; pas de téléphone physique. Voir `../HANDOFF.md`.
+
+Version **0.20-causal** : `../builds/nexus-city-solo-debug-v20.apk`.
+Carnet aéré : lecture/éléments à gauche, suspects à droite, onglets compacts,
+documents et détails secondaires dépliables, deux scrolls tactiles indépendants.
+Annotations personnelles et journal complet conservés. Nouvelle enquête et
+frontières accessibles par « ••• ». Premier intérieur distinct du bar avec
+billard décoratif, barman derrière le comptoir, néons/briques/banquettes voxel.
+Compatible v18/v19, même moteur/signature ; pas de nouvelle enquête imposée.
+Parcours natifs desktop et captures 18:9/20:9, replays sous Python 3.13 staged.
+Pas de test sur appareil Android physique. Détails : `../HANDOFF.md`.
+
+Version **0.19-causal** : `../builds/nexus-city-solo-debug-v19.apk`.
+Compatible avec les enquêtes v18, même moteur/signature. Barman/serveur : souvenirs
+par repères humains (heures/quarts d'heure), pas 19:55–21:05 récité à la minute.
+La frise et les pistes reprennent les bornes réellement dites, à l'intérieur de
+la présence vraie. Poison : souvenir de la séquence verre → malaise, pas d'heure
+précise ajoutée au carnet. Vérité du crime inchangée, 20/20 parcours CLI réussis.
+603 tests ciblés passent. Captures `../art/captures/guidance-*-v19-{18x9,20x9}.png`,
+pas de téléphone physique.
+
+Version **0.18-causal** : `../builds/nexus-city-solo-debug-v18.apk`.
+**Nouvelle enquête après v17** (`causal-3d-v3`), sauvegarde précédente conservée
+à part, même signature debug. Sept suspects, seeds générées 0–1000. Noms cités :
+positions actuelle/prochaine disponibles, portrait toujours en silhouette jusqu'à
+apprentissage du profil. Plus de corroborateurs nommés : le barman/serveur
+confirme les présences réellement observées. Pistes localisables vers la source
+exacte, glow vert après vérification, marquages personnels toujours manuels.
+Onglet Horaires : frise des seules données acquises, période du crime en corail,
+récits ambre / corroborations vertes / CCTV cyan. Examen demandé à la morgue ou
+sur la scène, délai au plus quatre fins de tour ; rappel du résultat gratuit.
+La période vient en premier dans la réponse du légiste. Piste du verre prélevé
+vers le laboratoire. Pancarte/entrée corail pour la scène du crime.
+Captures desktop 18:9/20:9, pas de téléphone physique. Voir `../PLAYTEST_V18.md`.
+
+Version **0.17-causal** : `../builds/nexus-city-solo-debug-v17.apk`.
+Sauvegarde v16 conservée, même moteur `causal-3d-v2` et signature debug.
+Camille/Alex/etc. existants portent explicitement le statut « Témoin » ; services
+« Personnel ». Aucun témoin annexe supplémentaire généré. Carnet séparé en
+Suspects / Contacts / Pistes / Notes ; contacts sans boutons d'accusation ni
+d'écartement. Le nom d'un suspect cité dans un texte effectivement reçu ouvre
+sa fiche en silhouette, sans traits, domicile ou positions : profil appris par
+rencontre ou fiche police seulement. Barman/restaurateur derrière le comptoir,
+suspects clients dans la salle ; comptoir abaissé pour garder les visages visibles.
+Les annotations manuelles sont isolées par instance d'enquête (UUID persisté),
+pas seulement par seed, et les deux types de marquage sont effacés au redémarrage.
+645 tests ciblés ; parcours tactiles desktop 18:9/20:9 et captures examinées.
+Pas de test sur téléphone physique. Voir `../PLAYTEST_V17.md`.
+
+Version **0.16-causal** : `../builds/nexus-city-solo-debug-v16.apk`.
+**Nouvelle enquête après v15** (moteur `causal-3d-v2`) ; sauvegarde précédente
+conservée à part. Installer sans désinstaller, signature debug inchangée.
+Suspects : questions dès le toucher, aucun lien révélé automatiquement. Domiciles :
+couloir de portes, sonnerie et conversation au seuil ; entrée impossible si habité,
+Crochetage requis si vide (hors domicile de la victime). Routines domicile/travail
+commises à la fin du tour. Entrées publiques cyan, couloirs violets, morgue comme
+seconde entrée de l'hôpital ; arrivée au Palace corrigée. Présences comptées :
+suspects uniquement, personnel/témoins toujours physiquement interactifs.
+Amis/proches peuvent avoir été présentés au partenaire, sans omniscience.
+Souvenirs personnels pour tous ; visites avec témoin nommé = piste au carnet.
+Les témoins sont dans des lieux publics, déclaration ≠ alibi confirmé. La période
+médicale et, pour le poison, l'analyse restent nécessaires au recoupement.
+Questions Mobile/Témoin/Alibi, autres détails repliés ; échanges écrits dans les
+appartements. Rendez-vous questionnable après lecture de l'agenda. Serveurs
+physiques, registre de clients ; commissaire et fiches/casiers avec signalement.
+Cheveux restaurés dans critères et portraits ; passages innocents réels sur les
+mauvaises heures CCTV, pas d'exclusion par une simple présence. Témoins plus
+fréquents, pistes de contact, Seed au HUD. `../REGRESSION_AUDIT.md` distingue les
+mécanismes retrouvés de ceux à porter (taxi/hacking, dossiers individuels, etc.).
+Captures/tests tactiles desktop en 18:9 et 20:9 ; pas de téléphone physique.
+
+Finalisation v16 : déjeuner/dîner/verre avec poses/accessoires légers, lieux actuels
+et prochain tour dans les fiches identifiées. Fils nommés, recoupements explicites,
+hypothèses infirmables par des sources réellement accessibles ; tri/écartement
+toujours manuels. Pas de fausse clôture d'alibi avant le rapport médical.
+1 682 tests ciblés, 20 CLI guidées achevées et parcours tactiles natifs ; replay du
+paquet sous CPython 3.13 (0/1/7/19), sources du paquet comparées au dépôt.
+APK ARM64 42,21 MiB, certificat debug conservé. Voir `../PLAYTEST_V16.md`.
+
+Version **0.15-causal** : `../builds/nexus-city-solo-debug-v15.apk`.
+Correction des fermetures bloquées sur « En attente ». PNJ : menu de questions
+avant toute réponse, statut explicite sans PA ni avance de temps. Pas d'objet
+« attendre » fictif : compte rendu annoncé en tours au plus, horloge inchangée
+par consultation du statut. Cinq questions identiques et mêmes coûts chez tous
+les suspects. Poubelles fouillées conservées, halo retiré. Archives CCTV seulement
+à la régie : quartier puis quatre créneaux directs, relecture gratuite.
+Reprise des historiques v14 (anciennes caméras/attentes) conservée.
+
+Version **0.14-causal** : `../builds/nexus-city-solo-debug-v14.apk`.
+Le nouveau générateur causal est maintenant branché au monde 3D : suspects et
+témoins physiques, poubelles/caméras par rue et heure, objets domestiques, agenda,
+correspondance, albums, analyses et empreintes optionnelles dans les deux slots.
+6 PA, tours manuels, temps et délais réels du prototype ; carnet/notes/adresses et
+pistes conservés. Sauvegarde séparée `nexus-causal-solo.json` : une nouvelle enquête
+sans toucher l'ancienne. Les PNJ restent à domicile pour cette première intégration.
+Moteur sans serveur, Loom, LLM ni accès réseau. Tous les modules du générateur sont
+embarqués explicitement. Signature debug existante conservée, compatible avec une
+mise à jour v11 sans désinstallation. Tests desktop natifs 18:9/20:9, parcours
+poison/labo/morgue, packaging CPython 3.13 ; pas de test sur téléphone physique.
+Ancien serveur multijoueur non migré. Voir ../SCENARIO_PLAYABLE.md pour les limites.
+
+Version **0.11** : `../builds/nexus-city-solo-debug-v11.apk`, même signature debug.
+Présences par quartier et lieu (portraits connus / silhouettes inconnues),
+échanges spontanés entre habitants réellement liés à l'entrée dans une pièce.
+Deux locuteurs, écoute gratuite, journal privé ; une seule fois, y compris après
+reprise. Version de règles 11 : ancienne sauvegarde conservée à part, nouvelle
+préparation. 841 tests Python, CLI avec échanges et reprises, taps natifs 18:9 /
+20:9 desktop. L'auditeur de graphes est un outil de développement, non embarqué.
+
+Version **0.10** (précédente) : `../builds/nexus-city-solo-debug-v10.apk`.
+PNJ de service distincts des suspects (halos roses), vrais objets d'interaction
+et paliers avec les portes des appartements du graphe. Plus d'actions flottantes
+dans un quartier vide. Cinq questions sans scroll, dialogues sans conseils,
+pensées du détective en cyan/italiques, pistes en langage courant. Carnet :
+« À investiguer » en tête, écartés en bas, animation et choix visuels réversibles.
+Le monde passe seul en N&B à 0 PA ; l'UI reste colorée. « Repérer » conserve la
+pancarte demandée. Sang déjà connu = aucune deuxième analyse ; morgue = labo
+sur place. 772 tests Python, trois affaires CLI terminées et sauvegardées.
+Captures et taps natifs desktop en 18:9 / 20:9 ; pas de téléphone physique.
+**Nouvelle enquête après v9**, car les rumeurs ne donnent plus une liste de noms.
+L'ancien fichier est conservé en `.invalid-*`. Réinstaller sans désinstaller,
+avec la même signature ; aucune permission Internet, aucun serveur ou Loom requis.
+
 Version **0.9** : `../builds/nexus-city-solo-debug-v9.apk`.
 Plus d'intermédiaire ni de reçu obligatoire. Le vol / dossier compromettant
 peut laisser un objet introuvable ou dans une cache anonyme ; la vengeance

@@ -10,8 +10,8 @@ android {
         applicationId 'fr.nexuscity.solo'
         minSdk 24
         targetSdk 35
-        versionCode 9
-        versionName '0.9-solo'
+        versionCode 23
+        versionName '0.23-causal'
         ndk { abiFilters.addAll((project.findProperty('nexusAbis') ?: 'arm64-v8a').split(',')) }
     }
     sourceSets.main.assets.srcDir layout.buildDirectory.dir('nexusAssets')
@@ -46,7 +46,11 @@ dependencies {
 def stagePython = tasks.register('stageNexusPython', Sync) {
     from('../../..') {
         include 'game.py', 'city.py', 'clue.py', 'genotype.py', 'modality.py',
-                'routine.py', 'suspect.py', 'solo_runtime.py', 'narrative.py', 'scenario_graph.py'
+                'routine.py', 'suspect.py', 'solo_runtime.py', 'narrative.py', 'scenario_graph.py',
+                'causal_game.py', 'scenario_access.py', 'scenario_sampler.py', 'scenario_kernel.py',
+                'scenario_crime.py', 'scenario_means.py', 'scenario_victim.py',
+                'scenario_situations.py', 'scenario_witnesses.py', 'scenario_observations.py',
+                'scenario_life.py', 'scenario_evidence.py', 'scenario_evening.py', 'scenario_play.py'
     }
     into layout.buildDirectory.dir('nexusPython')
 }

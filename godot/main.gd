@@ -23,6 +23,7 @@ var region_transition: Control
 var room_backdrop: Control
 var lounge: Node3D
 var inside_scene := false
+var interior_hallway := false
 var exterior_far := 4000.0
 var selected_person := {}
 var pending_events := []
@@ -41,7 +42,6 @@ var focus_tween: Tween
 var solo_mode := false
 var solo: RefCounted
 var solo_busy := false
-var new_case_button: Button
 var restart_dialog: ConfirmationDialog
 var qte_button: Button
 var visuals: Node3D
@@ -104,16 +104,26 @@ var last_place := ""
 var reconnect_t := 0.0
 var notebook_page: PanelContainer
 var notebook_scroll: ScrollContainer
+var notebook_suspect_scroll: ScrollContainer
+var notebook_suspect_heading: Label
+var notebook_selected := -1
+var notebook_open_evidence := -1
+var notebook_menu: MenuButton
 var notebook_grid: GridContainer
 var notebook_summary: Label
 var notebook_evidence: VBoxContainer
 var notebook_dossier: VBoxContainer
 var notebook_notes: VBoxContainer
 var notebook_leads: VBoxContainer
+var notebook_contacts: VBoxContainer
+var notebook_timeline: VBoxContainer
 var notebook_tabs := {}
-var notebook_tab := "people"
+var notebook_tab := "evidence"
 var notebook_cards := {}
 var manual_exclusions := {}
+var manual_priorities := {}
+var notebook_reflow: Tween
+var notebook_reflow_generation := 0
 var notes_case := ""
 const NOTES_PATH := "user://case-notes.cfg"
 var notes_path := NOTES_PATH
@@ -123,6 +133,7 @@ const DISTRICT_NAMES := {
 	"cctv": "Quartier des Ondes", "cabaret": "Quartier du Palace",
 	"den": "Quartier des Jeux", "hospital": "Quartier Saint-Vital",
 	"police": "Quartier Central", "victim_house": "Résidence Verlaine",
+	"restaurant": "Quartier du Comptoir",
 }
 var qte: ProgressBar
 var qte_active := false
@@ -145,7 +156,11 @@ func _ready() -> void:
 			server_url = arg.trim_prefix("--server-url=")
 	# Godot feature tags are lowercase. The embedded plugin is also authoritative:
 	# an APK must never silently fall back to the desktop WebSocket connection.
-	solo_mode = Engine.has_singleton("NexusSolo") or OS.has_feature("android") or "--solo" in OS.get_cmdline_user_args()
+	var explicit_server := false
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--server-url="):
+			explicit_server = true
+	solo_mode = Engine.has_singleton("NexusSolo") or OS.has_feature("android") or "--solo" in OS.get_cmdline_user_args() or not explicit_server
 	cam = Camera3D.new()
 	add_child(cam)
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL if "--ortho" in OS.get_cmdline_user_args() else Camera3D.PROJECTION_PERSPECTIVE
@@ -210,7 +225,7 @@ func _art_preview() -> void:
 	# Art review only: this fixture never feeds options or changes the server view.
 	var grid := [["alley", "crime_scene", "victim_street", null, "victim_house"],
 		["cctv", "bar", "police", null, null], ["cabaret", "den", "hospital", null, null],
-		[null, null, null, null, null]]
+		[null, null, "restaurant", null, null]]
 	visuals.build(grid)
 	for r in grid.size():
 		for c in grid[r].size():
@@ -271,8 +286,8 @@ func _process(delta: float) -> void:
 			_on_message(message)
 	else:
 		_poll_server(delta)
-	if new_case_button != null:
-		new_case_button.disabled = solo_busy or qte_active
+	if notebook_menu != null and solo_mode:
+		notebook_menu.get_popup().set_item_disabled(notebook_menu.get_popup().get_item_index(1), solo_busy or qte_active)
 	for btn in anchors:
 		btn.position = cam.unproject_position(anchors[btn][0]) + anchors[btn][1]
 	if notification_scroll != null:
@@ -393,7 +408,8 @@ func _on_message(msg: Dictionary) -> void:
 				var args := OS.get_cmdline_user_args()
 				if "--enter" in args or "--carnet" in args or "--city" in args or "--inside" in args:
 					equipped = true  # review modes skip the setup
-					_send({"type": "equip", "items": ["taxi", "forensic_kit"], "start": "bar" if "--inside" in args else "victim_street"})
+					var review_items := ["fingerprints", "search"] if view.has("engine") else ["taxi", "forensic_kit"]
+					_send({"type": "equip", "items": review_items, "start": "bar" if "--inside" in args else view.setup.get("default_start", "victim_street")})
 				else:
 					_show_setup()
 			elif "--enter" in OS.get_cmdline_user_args() and not entered:  # review mode: walk into an apartment
@@ -428,6 +444,7 @@ func _reset_solo_city() -> void:
 	# Keep the transport, rebuild only the seed-dependent scene/UI.
 	view = {}
 	manual_exclusions.clear()
+	manual_priorities.clear()
 	notes_case = ""
 	dialogue.hide()
 	case_toasts.clear()
@@ -454,6 +471,7 @@ func _reset_solo_city() -> void:
 	_mount_notifications(false)
 	notebook_page.visible = false
 	navigation.clear()
+	navigation.pinned_region = ""
 	for actor in people + detectives:
 		actor.queue_free()
 	people.clear()
@@ -476,12 +494,18 @@ func _show_cards(lines: Array, color: Color) -> void:
 func _present_feedback(previous: Dictionary) -> void:
 	var cue = view.get("conversation")
 	var notebook_changed := not previous.is_empty() and not previous.has("setup") and JSON.stringify(previous.get("notebook", [])) != JSON.stringify(view.get("notebook", []))
+	# Closing a causal conversation is an acknowledgement without a reply cue.
+	# The chooser was waiting for that acknowledgement; explicitly release it.
+	if action_context == "stop" and view.get("pending") == null:
+		dialogue.waiting = false
+		dialogue.hide()
+		selected_person.clear()
 	if cue != null and int(cue.id) != last_cue_id:
 		last_cue_id = int(cue.id)
 		selected_person = cue.person.duplicate(true)
-		dialogue.show_cue(cue, view["options"])
+		dialogue.show_cue(cue, view.get("dialogue_options", view["options"]))
 		if notebook_changed:
-			var detail: String = str(cue.notes[0]) if not cue.get("notes", []).is_empty() and cue.stage == "reply" else "Informations sur " + str(cue.person.name)
+			var detail: String = str(cue.get("title", "Conversation conservée")) if cue.stage == "scene" else str(cue.notes[0]) if not cue.get("notes", []).is_empty() and cue.stage == "reply" else "Informations sur " + str(cue.person.name)
 			case_toasts.note("Carnet mis à jour", detail)
 	elif not pending_events.is_empty():
 		if action_context in ["move", "walk", "end", "", "equip"]:
@@ -508,6 +532,7 @@ func _present_feedback(previous: Dictionary) -> void:
 # ---------------------------------------------------------------- the city
 
 func _draw() -> void:
+	visuals.set_actions_exhausted(int(view.get("ap", 0)) == 0)
 	var grid: Array = view["grid"]
 	var places: Dictionary = view["places"]
 	var here: String = view["place"]
@@ -519,6 +544,7 @@ func _draw() -> void:
 	var changed_place := here != last_place and not last_place.is_empty()
 	var changed_region: bool = street != last_region and not last_region.is_empty()
 	if changed_place:
+		navigation.pinned_region = ""
 		interior.hide()
 		dialogue.hide()
 		_mount_notifications(false)
@@ -548,7 +574,9 @@ func _draw() -> void:
 		var i: int = per_street.get(st, 0)
 		per_street[st] = i + 1
 		if not houses.has(id):
-			houses[id] = _make_house(nodes[st].position + Vector3(-2.6 + (i % 6) * 1.0, 0.16, 2.82 + (i / 6) * 0.5))
+			houses[id] = _make_house(nodes[st].position + (Vector3(10.2, 0.16, 2.35) if places[id].get("custom", false) else Vector3(-2.6 + (i % 6) * 1.0, 0.16, 2.82 + (i / 6) * 0.5)))
+			if places[id].get("custom", false):
+				houses[id].get_node("Box").hide()
 		var hmat := (houses[id].get_node("Box") as MeshInstance3D).get_surface_override_material(0) as StandardMaterial3D
 		hmat.albedo_color = Color(0.9, 0.3, 0.6) if id == here else Color(0.95, 0.8, 0.35) if places[id]["lit"] else Color(0.14, 0.13, 0.2)
 		hmat.emission_enabled = places[id]["lit"] or id == here
@@ -594,13 +622,15 @@ func _draw() -> void:
 	header.text = "NEXUS CITY  /  %s\n%s · Tour %d · %d PA · %d preuves · %d documents" % [
 		_district_title(street), view["player"], view["tick"] + 1, view["ap"], pr["preuves"], pr.get("documents", 0)]
 	if solo_mode:
-		header.text += " · SOLO hors ligne"
+		header.text += " · Seed %s · SOLO" % str(int(view.get("solo", {}).get("seed", SEED)))
+	if view.has("clock"):
+		header.text += " · " + str(view.clock)
 	if view["pending"] != null:
 		header.text += "   — en conversation avec %s" % view["pending"]
 	_draw_actions(street)
 	_draw_notebook()
 	if not interior.visible:
-		_focus(here)
+		_focus(navigation.pinned_region if not navigation.pinned_region.is_empty() else here)
 	if changed_region:
 		region_transition.arrive(_district_title(street))
 	if here == enter_requested or "--inside" in OS.get_cmdline_user_args():
@@ -616,7 +646,7 @@ func _focus(here: String) -> void:
 	if here == focus:
 		return
 	focus = here
-	var target: Vector3 = (houses[here] if houses.has(here) else nodes[here]).position
+	var target: Vector3 = houses[here].position if houses.has(here) else _world(here) + Vector3(0, 0, -1.8)
 	var size := 17.0 if houses.has(here) else 18.0
 	if "--close-camera" in OS.get_cmdline_user_args() and not houses.has(here):
 		size = 20.0
@@ -659,28 +689,45 @@ func _draw_actions(street: String) -> void:
 			end_key = key
 			continue
 		if key[0] == "move" and text.begins_with("Taxi") and view["places"][key[1]]["street"] == null:
-			taxi_choices.append({"label": view["places"][key[1]]["label"], "hint": "Taxi · zone (1 PA)", "callback": _play_option.bind(key.duplicate(true))})
+			taxi_choices.append({"label": view["places"][key[1]]["label"], "hint": "Taxi · zone (1 PA)", "presence": _presence(str(key[1]), true), "callback": _play_option.bind(key.duplicate(true))})
 	var current: String = view["place"]
 	var spot: Vector3 = houses[current].position + Vector3(0, 0.15, 1.0) if houses.has(current) else _world(street)
-	var outdoor := current in ["victim_street", "alley"]
-	var has_local_action: bool = not view["present"].is_empty()
+	var outdoor: bool = view.get("outdoors", current in ["victim_street", "alley"])
+	var has_local_action: bool = not view["present"].is_empty() or not view.get("fixtures", []).is_empty() or not view.get("staff", []).is_empty()
 	for option in view["options"]:
-		if not option[0][0] in ["move", "walk", "end"]:
+		if option[0][0] in ["search", "investigate", "unlock", "try_code"]:
 			has_local_action = true
 	var local_marker: Node3D
 	if not outdoor or has_local_action:
-		navigation.add_destination(spot, "Explorer" if outdoor else "Entrer", view["places"][current]["label"], _open_interior, true)
+		navigation.add_destination(spot, "Scène du crime" if _is_crime_place(current) else "Examiner sur place" if outdoor or current == "crime_scene" else "Entrer", view["places"][current]["label"], _open_interior, true, true, true, _presence(current), Color("ff7889") if _is_crime_place(current) else Color("63e1ec"))
 		navigation.entries[-1]["region"] = street
-		local_marker = visuals.navigation_marker(spot, true)
+		local_marker = visuals.navigation_marker(spot, true, Color("63e1ec"))
 		local_marker.set_meta("region", street)
 		navigation_markers.add_child(local_marker)
 	var doors := _door_choices(street)
 	if not doors.is_empty():
 		var at := _world(street) + Vector3(2.0, 0, 0.3)
-		navigation.add_destination(at, "Entrées", "Appartements du quartier", navigation.show_choices.bind("Entrées · " + str(view["places"][street]["label"]), doors))
+		var home_presence := _presence(street, true).duplicate(true)
+		home_presence.people = []
+		home_presence.count = 0
+		for place in view.places:
+			if view.places[place].get("street") == street:
+				var occupants := _presence(str(place))
+				home_presence.people.append_array(occupants.get("people", []))
+				home_presence.count += int(occupants.get("count", 0))
+		navigation.add_destination(at, "Appartements", "Couloir · sonner aux portes", _open_interior.bind(true), false, true, true, home_presence, Color("b896ff"))
 		navigation.entries[-1]["region"] = street
-		local_marker = visuals.navigation_marker(at)
+		local_marker = visuals.navigation_marker(at, false, Color("b896ff"))
 		local_marker.set_meta("region", street)
+		navigation_markers.add_child(local_marker)
+	for place in view.places:
+		if not view.places[place].get("custom", false) or view.places[place].get("street") != street or place == current:
+			continue
+		var route: Dictionary = view.routes.get(place, {})
+		var at: Vector3 = houses[place].position + Vector3(0, 0.15, 1.0)
+		navigation.add_destination(at, "Scène du crime" if _is_crime_place(place) else "Entrer", view.places[place].label, _enter_place.bind(place, route.key.duplicate(true)), false, route.get("available", false), true, _presence(place), Color("ff7889") if _is_crime_place(place) else Color("63e1ec"))
+		navigation.entries[-1]["place"] = place
+		local_marker = visuals.navigation_marker(at, false, Color("63e1ec"))
 		navigation_markers.add_child(local_marker)
 	if view.has("routes"):
 		for dest in view["routes"]:
@@ -696,8 +743,8 @@ func _draw_actions(street: String) -> void:
 				continue
 			var callback := _play_option.bind(route["key"].duplicate(true))
 			var locations := _district_locations(dest)
-			navigation.add_district(nodes[dest].position + Vector3(0, 1.8, 0), _district_title(dest), locations, cost, callback, dest)
-			district_choices.append({"label": _district_title(dest), "hint": "%d PA · %s" % [cost, view["places"][dest]["label"]], "callback": callback})
+			navigation.add_district(nodes[dest].position + Vector3(0, 1.8, 0), _district_title(dest), locations, cost, callback, dest, true, _presence(str(dest), true), _is_crime_region(str(dest)))
+			district_choices.append({"label": _district_title(dest), "hint": "%d PA · %s" % [cost, view["places"][dest]["label"]], "presence": _presence(str(dest), true), "callback": callback})
 	end_button.disabled = end_key.is_empty()
 	end_button.set_meta("key", end_key)
 	var end_style: StyleBoxFlat = interface_theme.get_stylebox("normal", "Button").duplicate()
@@ -714,21 +761,41 @@ func _draw_actions(street: String) -> void:
 		avatar.detective = true
 		avatar.accent = actor.get_meta("color")
 		navigation.add_actor(actor.position + Vector3(0, 1.8, 0), actor.get_meta("name"), avatar, actor.get_meta("you"), actor)
+	if not navigation.pinned_region.is_empty():
+		_pin_district(navigation.pinned_region)
+
+func _is_crime_place(place: String) -> bool:
+	return place == str(view.get("crime_site", {}).get("place", "crime_scene"))
+
+func _is_crime_region(region: String) -> bool:
+	var site: Dictionary = view.get("crime_site", {})
+	return region == str(site.get("region", site.get("place", "crime_scene")))
 
 func _district_title(region: String) -> String:
-	if region == "crime_scene" and view.has("crime_site"):
+	if view.has("crime_site") and region == str(view.crime_site.place):
 		return view.crime_site.get("district", "Quartier du Canal")
 	return DISTRICT_NAMES.get(region, "Quartier · " + str(view["places"][region]["label"]))
 
 func _district_locations(region: String) -> Array:
-	var locations := [view["places"][region]["label"]]
+	var locations := [_location_presence_label(region)]
 	for place in view["places"]:
 		if view["places"][place]["street"] == region:
-			locations.append(view["places"][place]["label"])
+			locations.append(_location_presence_label(str(place)))
 	return locations
+
+func _presence(place: String, district: bool = false) -> Dictionary:
+	return view.get("presence", {}).get("districts" if district else "places", {}).get(place, {})
+
+func _location_presence_label(place: String) -> String:
+	var presence := _presence(place)
+	return str(view.places[place].label) + ((" · %d suspect%s" % [int(presence.count), "s" if int(presence.count) != 1 else ""] if presence.get("scope", "") == "suspects" else " · %d pers." % int(presence.count)) if presence.has("count") else "")
 
 func _door_choices(region: String) -> Array:
 	var choices := []
+	if view.has("engine"):
+		for door in view.get("doors", []):
+			choices.append({"label": door.label, "hint": "Sonner" if door.occupied else "Appartement vide", "available": not door.actions.is_empty(), "callback": _select_person.bind(door.duplicate(true))})
+		return choices
 	if view["place"] != region:
 		var route: Dictionary = view.get("routes", {}).get(region, {})
 		if route.get("available", false):
@@ -763,7 +830,9 @@ func _play_option(key: Array) -> void:
 	_send({"type": "play", "key": key})
 
 func _play_local(key: Array) -> void:
-	if key[0] in ["interrogate", "ring"] and not dialogue.visible:
+	if key[0] == "move" and view.places.get(str(key[1]), {}).get("street") != null:
+		enter_requested = str(key[1])
+	if (key[0] == "interrogate" or key[0] == "ring" and typeof(key[1]) != TYPE_STRING) and not dialogue.visible:
 		var person := {"id": int(key[1]), "name": null, "look": ""}
 		for candidate in view["present"]:
 			if int(candidate.id) == int(key[1]):
@@ -1062,105 +1131,152 @@ func _build_hud() -> void:
 	hud.add_child(navigation_hint)
 	# the notebook: a page over everything, opened by the button
 	notebook_page = PanelContainer.new()
-	notebook_page.theme = interface_theme
+	notebook_page.theme = interface_theme.duplicate()
+	notebook_page.theme.default_font_size = 14
+	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var compact_style: StyleBox = interface_theme.get_stylebox(state, "Button").duplicate()
+		compact_style.content_margin_top = 6
+		compact_style.content_margin_bottom = 6
+		compact_style.content_margin_left = 12
+		compact_style.content_margin_right = 12
+		notebook_page.theme.set_stylebox(state, "Button", compact_style)
 	notebook_page.visible = false
-	var page := StyleBoxFlat.new()  # an opaque page: the city stays behind
-	page.bg_color = Color("0c1726")
-	page.border_color = Color("397c90")
-	page.set_border_width_all(2)
-	page.set_corner_radius_all(8)
-	page.set_content_margin_all(24)
+	var page := StyleBoxFlat.new()
+	page.bg_color = Color("0b1623")
+	page.border_color = Color("356475")
+	page.set_border_width_all(1)
+	page.set_corner_radius_all(10)
+	page.set_content_margin_all(16)
 	notebook_page.add_theme_stylebox_override("panel", page)
 	notebook_page.anchor_right = 1.0
 	notebook_page.anchor_bottom = 1.0
-	notebook_page.offset_left = 16
-	notebook_page.offset_top = 16
-	notebook_page.offset_right = -16
-	notebook_page.offset_bottom = -16
-	var top := CanvasLayer.new()  # above the action buttons and the interior, and it swallows clicks
+	notebook_page.offset_left = 10
+	notebook_page.offset_top = 10
+	notebook_page.offset_right = -10
+	notebook_page.offset_bottom = -10
+	var top := CanvasLayer.new()
 	top.layer = 4
 	add_child(top)
 	top.add_child(notebook_page)
 	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 8)
 	notebook_page.add_child(column)
+	var notebook_heading := HBoxContainer.new()
+	notebook_heading.add_theme_constant_override("separation", 16)
+	column.add_child(notebook_heading)
 	var title := Label.new()
 	title.text = "Carnet"
-	title.add_theme_font_size_override("font_size", 28)
-	var notebook_heading := HBoxContainer.new()
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 22)
 	notebook_heading.add_child(title)
-	var zone_toggle := CheckButton.new()
-	zone_toggle.text = "Frontières · essai"
-	zone_toggle.custom_minimum_size.y = 48
-	zone_toggle.button_pressed = board_enabled
-	zone_toggle.toggled.connect(func(enabled):
-		board_enabled = enabled
-		board_zones.visible = enabled
-		if not view.is_empty() and not view.has("setup"):
-			var here: String = view["place"]
-			var street = view["places"][here]["street"]
-			_draw_actions(here if street == null else street))
-	notebook_heading.add_child(zone_toggle)
-	column.add_child(notebook_heading)
 	notebook_summary = Label.new()
-	notebook_summary.add_theme_font_size_override("font_size", 14)
-	notebook_summary.add_theme_color_override("font_color", Color("89b5c5"))
-	column.add_child(notebook_summary)
+	notebook_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	notebook_summary.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	notebook_summary.add_theme_font_size_override("font_size", 12)
+	notebook_summary.add_theme_color_override("font_color", Color("7895a3"))
+	notebook_heading.add_child(notebook_summary)
+	notebook_menu = MenuButton.new()
+	notebook_menu.text = "•••"
+	notebook_menu.custom_minimum_size = Vector2(44, 44)
+	notebook_menu.tooltip_text = "Options du carnet"
+	notebook_heading.add_child(notebook_menu)
+	var menu := notebook_menu.get_popup()
+	menu.add_theme_font_size_override("font_size", 16)
+	menu.add_theme_constant_override("v_separation", 24)
+	menu.add_check_item("Frontières du plateau", 0)
+	menu.set_item_checked(0, board_enabled)
+	menu.add_separator()
+	if solo_mode:
+		menu.add_item("Nouvelle enquête…", 1)
+	menu.id_pressed.connect(func(id):
+		if id == 0:
+			board_enabled = not board_enabled
+			board_zones.visible = board_enabled
+			menu.set_item_checked(0, board_enabled)
+			if not view.is_empty() and not view.has("setup"):
+				var here: String = view["place"]
+				var street = view["places"][here]["street"]
+				_draw_actions(here if street == null else street)
+		elif id == 1:
+			restart_dialog.popup_centered(Vector2i(640, 260)))
+	var close := Button.new()
+	close.text = "×"
+	close.custom_minimum_size = Vector2(44, 44)
+	close.add_theme_font_size_override("font_size", 24)
+	close.tooltip_text = "Fermer le carnet"
+	close.pressed.connect(func(): notebook_page.hide())
+	notebook_heading.add_child(close)
+	var panes := HBoxContainer.new()
+	panes.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panes.add_theme_constant_override("separation", 20)
+	column.add_child(panes)
+	var reading := VBoxContainer.new()
+	reading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reading.size_flags_stretch_ratio = 2.0
+	reading.add_theme_constant_override("separation", 14)
+	panes.add_child(reading)
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 10)
-	column.add_child(tabs)
-	for id in ["people", "leads", "notes"]:
+	tabs.add_theme_constant_override("separation", 2)
+	reading.add_child(tabs)
+	for id in ["evidence", "leads", "timeline", "notes", "contacts", "people"]:
 		var tab := Button.new()
 		tab.toggle_mode = true
-		tab.add_theme_color_override("font_pressed_color", Color("a5e8e2"))
-		tab.text = {"people": "Personnes", "leads": "Pistes", "notes": "Notes"}[id]
-		tab.custom_minimum_size.y = 44
+		tab.text = {"evidence": "Éléments", "people": "Fiche", "contacts": "Contacts", "leads": "Pistes", "timeline": "Horaires", "notes": "Notes"}[id]
+		tab.custom_minimum_size = Vector2(0, 40)
 		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab.add_theme_font_size_override("font_size", 13)
+		for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			var style := StyleBoxFlat.new()
+			style.bg_color = Color("152d3a") if state in ["pressed", "hover_pressed"] else Color("0b1623")
+			style.border_color = Color("76d6d4") if state in ["pressed", "hover_pressed"] else Color("355564") if state == "hover" else Color.TRANSPARENT
+			style.border_width_bottom = 2
+			style.set_content_margin_all(6)
+			style.set_corner_radius_all(4)
+			tab.add_theme_stylebox_override(state, style)
+		tab.add_theme_color_override("font_pressed_color", Color("a7ece6"))
 		tab.pressed.connect(_set_notebook_tab.bind(id))
 		notebook_tabs[id] = tab
 		tabs.add_child(tab)
 	notebook_scroll = ScrollContainer.new()
 	notebook_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	notebook_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	column.add_child(notebook_scroll)
+	reading.add_child(notebook_scroll)
 	var dossier := VBoxContainer.new()
 	dossier.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	dossier.add_theme_constant_override("separation", 14)
+	dossier.add_theme_constant_override("separation", 20)
 	notebook_scroll.add_child(dossier)
-	notebook_dossier = VBoxContainer.new()
-	notebook_dossier.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	notebook_dossier.add_theme_constant_override("separation", 14)
-	dossier.add_child(notebook_dossier)
-	notebook_notes = VBoxContainer.new()
-	notebook_notes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	notebook_notes.add_theme_constant_override("separation", 12)
-	dossier.add_child(notebook_notes)
-	notebook_leads = VBoxContainer.new()
-	notebook_leads.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	notebook_leads.add_theme_constant_override("separation", 14)
-	dossier.add_child(notebook_leads)
-	_set_notebook_tab("people")
 	notebook_evidence = VBoxContainer.new()
-	notebook_dossier.add_child(notebook_evidence)
+	notebook_dossier = VBoxContainer.new()
+	notebook_notes = VBoxContainer.new()
+	notebook_leads = VBoxContainer.new()
+	notebook_contacts = VBoxContainer.new()
+	notebook_timeline = VBoxContainer.new()
+	for section in [notebook_evidence, notebook_dossier, notebook_notes, notebook_leads, notebook_contacts, notebook_timeline]:
+		section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		section.add_theme_constant_override("separation", 18)
+		dossier.add_child(section)
+	var suspects := VBoxContainer.new()
+	suspects.custom_minimum_size.x = 280
+	suspects.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	suspects.size_flags_stretch_ratio = 1.0
+	suspects.add_theme_constant_override("separation", 14)
+	panes.add_child(suspects)
+	notebook_suspect_heading = Label.new()
+	notebook_suspect_heading.text = "SUSPECTS"
+	notebook_suspect_heading.custom_minimum_size.y = 40
+	notebook_suspect_heading.add_theme_font_size_override("font_size", 12)
+	notebook_suspect_heading.add_theme_color_override("font_color", Color("91b2bf"))
+	suspects.add_child(notebook_suspect_heading)
+	notebook_suspect_scroll = ScrollContainer.new()
+	notebook_suspect_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	notebook_suspect_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	suspects.add_child(notebook_suspect_scroll)
 	notebook_grid = GridContainer.new()
-	notebook_grid.columns = 2
-	notebook_grid.add_theme_constant_override("h_separation", 12)
-	notebook_grid.add_theme_constant_override("v_separation", 12)
-	notebook_dossier.add_child(notebook_grid)
-	var footer := HBoxContainer.new()
-	column.add_child(footer)
-	var close := Button.new()
-	close.text = "Fermer"
-	close.custom_minimum_size.y = 56 if phone_ui else 48
-	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	close.pressed.connect(func(): notebook_page.visible = false)
-	footer.add_child(close)
+	notebook_grid.columns = 1
+	notebook_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	notebook_grid.add_theme_constant_override("v_separation", 8)
+	notebook_suspect_scroll.add_child(notebook_grid)
+	_set_notebook_tab("evidence")
 	if solo_mode:
-		new_case_button = Button.new()
-		new_case_button.text = "Nouvelle enquête · solo"
-		new_case_button.custom_minimum_size.y = 56
-		new_case_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		footer.add_child(new_case_button)
 		restart_dialog = ConfirmationDialog.new()
 		restart_dialog.theme = interface_theme
 		restart_dialog.title = "Nouvelle enquête"
@@ -1170,7 +1286,6 @@ func _build_hud() -> void:
 		restart_dialog.get_ok_button().custom_minimum_size.y = 72 if phone_ui else 56
 		restart_dialog.get_cancel_button().custom_minimum_size.y = 72 if phone_ui else 56
 		add_child(restart_dialog)
-		new_case_button.pressed.connect(func(): restart_dialog.popup_centered(Vector2i(640, 260)))
 		restart_dialog.confirmed.connect(func(): _send({"type": "restart"}))
 	var conversation_layer := CanvasLayer.new()
 	conversation_layer.layer = 4
@@ -1244,9 +1359,18 @@ func _build_interior() -> void:
 	leave.offset_top = 24
 	leave.offset_bottom = 80
 	leave.custom_minimum_size = Vector2(160, 56)
-	leave.pressed.connect(func(): interior.visible = false; dialogue.hide(); _mount_notifications(false))
+	leave.pressed.connect(_leave_interior)
 	interior.add_child(leave)
 	interior.visibility_changed.connect(_sync_interior_scene)
+
+func _leave_interior() -> void:
+	if solo_busy:
+		return
+	if view.get("pending") != null:
+		_play_local(["stop"])
+	interior.hide()
+	dialogue.hide()
+	_mount_notifications(false)
 
 func _sync_interior_scene() -> void:
 	if lounge == null:
@@ -1263,21 +1387,27 @@ func _sync_interior_scene() -> void:
 		inside_scene = true
 		cam.far = 160.0
 		cam_target = lounge.global_position + Vector3(0, 2.25, 0)
-		cam.size = 27.0
+		cam.size = 23.0 if interior_hallway else 27.0
 	elif inside_scene:
 		inside_scene = false
 		cam.far = exterior_far
 		var here: String = view.place
 		var target: Node3D = houses[here] if houses.has(here) else nodes[here]
-		cam_target = target.position + Vector3(0, 1.5, 0)
+		cam_target = (target.position if houses.has(here) else _world(here) + Vector3(0, 0, -1.8)) + Vector3(0, 1.5, 0)
 		cam.size = 17.0 if houses.has(here) else 18.0
 	_update_camera()
 	navigation_hint.text = "Glissez · Zoomez · Touchez un halo pour parler" if interior.visible else "Quartiers · Entrées sur place · Glissez pour explorer"
 
-func _open_interior() -> void:
+func _open_interior(hallway: bool = false) -> void:
+	interior_hallway = hallway
 	interior.visible = true
+	if inside_scene:
+		cam.size = 23.0 if interior_hallway else 27.0
 	_mount_notifications(false)
 	_draw_interior()
+	var scene = view.get("arrival_scene")
+	if not interior_hallway and scene != null and not dialogue.visible and not solo_busy and view.get("pending") == null:
+		_play_local(scene.key.duplicate(true))
 
 func _mount_notifications(inside: bool) -> void:
 	if not inside:
@@ -1292,44 +1422,70 @@ func _mount_notifications(inside: bool) -> void:
 
 func _draw_interior() -> void:
 	var here: String = view["place"]
-	interior_title.text = view["places"][here]["label"]
+	interior_title.text = str(view.doorstep_label) if interior_hallway and view.get("doorstep_label") != null else "Couloir d'appartements · " + _district_title(here) if interior_hallway else "Sur place · " + _district_title(here) if view.get("outdoors", false) else view["places"][here]["label"]
 	person_buttons.clear()
 	for c in interior_box.get_children():
 		interior_box.remove_child(c)
 		c.queue_free()
-	lounge.populate(view)
+	var physical_view: Dictionary = view.duplicate(true)
+	physical_view["hallway"] = interior_hallway
+	if interior_hallway:
+		physical_view.staff = []
+		physical_view.present = []
+		physical_view.fixtures = []
+	else:
+		physical_view.doors = []
+	lounge.populate(physical_view)
 	person_buttons = lounge.person_buttons
-	var options: Array = view["options"]
-	var taken := {}  # option index -> shown under a person
-	for person in view["present"]:
-		for i in options.size():
-			var key: Array = options[i][0]
-			if key.size() > 1 and key[0] in ["interrogate", "confront", "talk_about", "observe"] and int(key[1]) == int(person["id"]):
-				taken[i] = true
-	var local_actions := []
-	for i in options.size():
-		var key: Array = options[i][0]
-		if taken.has(i) or key[0] in ["move", "walk", "end", "ask", "stop"]:
-			continue
-		local_actions.append(options[i])
-	if local_actions.size() == 1:
-		interior_box.add_child(_action_button(local_actions[0], false))
-	elif not local_actions.is_empty():
-		var actions_button := Button.new()
-		actions_button.text = "Actions du lieu…"
-		actions_button.custom_minimum_size = Vector2(226, 52)
-		actions_button.pressed.connect(_open_action_folder.bind("Actions du lieu", local_actions))
-		interior_box.add_child(actions_button)
+	# No unanchored place actions. Objects, staff and doors own their choices.
 
 func _open_action_folder(title: String, actions: Array) -> void:
 	dialogue.preview({"name": title, "look": "", "id": 0, "detective": true}, actions)
 
 func _select_person(person: Dictionary) -> void:
+	if person.get("object", false) or person.get("door", false):
+		if view.get("pending") != null or solo_busy or qte_active:
+			return
+		var actions: Array = person.get("actions", [])
+		if actions.is_empty():
+			dialogue.show_result([str(person.get("reason", "Aucune action disponible pour le moment."))], str(view.player))
+			return
+		for action in actions:
+			if action[0][0] == "ring" and actions.size() == 1:
+				_play_local(action[0].duplicate(true))
+				return
+		# Transport is a deliberate choice, not the side effect of tapping a body.
+		if actions.size() == 1 and actions[0][0][0] != "try_code" and actions[0][0] != ["investigate", "request_exam"]:
+			var key: Array = actions[0][0].duplicate(true)
+			if key[0] == "move":
+				_enter_place(str(key[1]), key)
+			else:
+				_play_local(key)
+		else:
+			var identity: Dictionary = person.duplicate(true)
+			if person.get("object", false) or not person.get("occupied", false):
+				identity = {"name": person.get("label", person.get("name", "Objet")), "id": 0, "look": "", "detective": true}
+			dialogue.preview(identity, actions)
+		return
+	if person.get("service", false):
+		if view.get("pending") != null or solo_busy or qte_active:
+			return
+		var actions: Array = person.get("actions", [])
+		if actions.is_empty():
+			dialogue.show_service_idle(person)
+		elif actions.size() == 1:
+			if actions[0][0][0] == "service_menu":
+				_play_local(actions[0][0].duplicate(true))
+			else:
+				dialogue.preview(person, actions)
+		else:
+			dialogue.preview(person, actions)
+		return
 	selected_person = person.duplicate(true)
 	if view.get("pending") != null:
 		var cue = view.get("conversation")
 		if cue != null and int(cue.person.id) == int(person.id):
-			dialogue.show_cue(cue, view.options)
+			dialogue.show_cue(cue, view.get("dialogue_options", view.options))
 		return
 	var actions := []
 	for option in view["options"]:
@@ -1379,14 +1535,21 @@ func _figure(person: Dictionary) -> Control:
 	return avatar
 
 func _draw_notebook() -> void:
-	for container in [notebook_grid, notebook_evidence]:
+	notebook_reflow_generation += 1
+	if notebook_reflow != null:
+		notebook_reflow.kill()
+	for container in [notebook_grid, notebook_evidence, notebook_dossier]:
 		for child in container.get_children():
 			container.remove_child(child)
 			child.queue_free()
 	notebook_cards.clear()
 	_draw_notebook_notes()
 	_draw_notebook_leads()
+	_draw_notebook_contacts()
+	_draw_notebook_timeline()
 	var rows: Array = view["notebook"].duplicate(true)
+	if not rows.any(func(row): return int(row.id) == notebook_selected):
+		notebook_selected = -1
 	for i in rows.size():
 		rows[i]["display_order"] = i
 	var known := 0
@@ -1394,25 +1557,21 @@ func _draw_notebook() -> void:
 		if row.name != "?":
 			known += 1
 	notebook_summary.text = "%d / %d personnes identifiées   ·   %d preuves établies" % [known, rows.size(), view["facts"].size()]
-	var evidence_toggle := Button.new()
-	evidence_toggle.text = "PREUVES & SOURCES FIABLES   ▾"
-	evidence_toggle.custom_minimum_size.y = 48
-	notebook_evidence.add_child(evidence_toggle)
-	var evidence_body := VBoxContainer.new()
-	evidence_body.visible = false
-	notebook_evidence.add_child(evidence_body)
-	evidence_toggle.pressed.connect(func(): evidence_body.visible = not evidence_body.visible)
-	_notebook_text(evidence_body, "PREUVES ÉTABLIES", ", ".join(view["facts"]) if not view["facts"].is_empty() else "Aucune preuve recueillie pour le moment.", Color("8fd6d1"))
-	if not view["trusted"].is_empty():
-		_notebook_text(evidence_body, "TÉMOIGNAGES FIABLES", ", ".join(view["trusted"]), Color("8fd6d1"))
+	_draw_notebook_evidence()
+	if notebook_selected == -1:
+		_notebook_text(notebook_dossier, "UNE PERSONNE À EXAMINER", "Touchez un portrait à droite pour ouvrir sa fiche. Vos éléments restent accessibles dans les autres onglets.", Color("8fd6d1"))
 	rows.sort_custom(func(a, b):
+		var rank_a := _suspect_note_rank(int(a.id), a.name == "?")
+		var rank_b := _suspect_note_rank(int(b.id), b.name == "?")
+		if rank_a != rank_b:
+			return rank_a < rank_b
 		if (a.name == "?") != (b.name == "?"):
 			return a.name != "?"
 		return int(a.display_order) < int(b.display_order))
 	for row in rows:
 		var identified: bool = row.name != "?"
 		var card := PanelContainer.new()
-		card.custom_minimum_size.x = 380 if phone_ui else 440
+		card.custom_minimum_size.x = 0
 		card.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var style := StyleBoxFlat.new()
@@ -1420,50 +1579,114 @@ func _draw_notebook() -> void:
 		style.border_color = Color("b69366") if identified else Color("294353")
 		style.border_width_left = 3
 		style.set_corner_radius_all(6)
-		style.set_content_margin_all(14)
+		style.set_content_margin_all(0)
 		card.add_theme_stylebox_override("panel", style)
 		notebook_grid.add_child(card)
 		notebook_cards[int(row.id)] = card
+		card.set_meta("suspect_id", int(row.id))
+		card.set_meta("display_order", int(row.display_order))
+		card.set_meta("unknown", not identified)
+		card.set_meta("corroborated", row.get("alibi") in ["corroboré", "confirmé"])
+		var choose := Button.new()
+		choose.custom_minimum_size.y = 78
+		choose.tooltip_text = "Ouvrir la fiche de " + str(row.name)
+		choose.set_meta("select_suspect", int(row.id))
+		for state in ["normal", "pressed", "hover", "hover_pressed", "focus"]:
+			choose.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+		choose.pressed.connect(_select_notebook_suspect.bind(int(row.id)))
+		card.add_child(choose)
 		var body := VBoxContainer.new()
-		body.add_theme_constant_override("separation", 10)
-		card.add_child(body)
+		body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		body.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		body.offset_left = 10
+		body.offset_right = -10
+		body.offset_top = 8
+		body.offset_bottom = -8
+		choose.add_child(body)
 		var top := HBoxContainer.new()
-		top.add_theme_constant_override("separation", 14)
+		top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		top.add_theme_constant_override("separation", 10)
 		body.add_child(top)
 		var avatar := VoxelAvatar.new()
 		avatar.identity = int(row.id)
-		avatar.unknown = not identified
+		avatar.unknown = not row.get("profile_known", identified)
 		avatar.look = " ".join(row.traits.values())
-		avatar.custom_minimum_size = Vector2(64, 76)
+		avatar.appearance = row.get("appearance", {})
+		avatar.custom_minimum_size = Vector2(40, 52)
+		avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		avatar.set_meta("notebook_portrait", true)
 		top.add_child(avatar)
 		var identity_box := VBoxContainer.new()
+		identity_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		identity_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		top.add_child(identity_box)
 		var name_label := Label.new()
-		name_label.text = row.name if identified else "Individu non identifié"
-		name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		name_label.add_theme_font_size_override("font_size", 19 if identified else 16)
+		name_label.text = row.name if identified else "Profil inconnu"
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_label.add_theme_font_size_override("font_size", 17 if identified else 15)
 		name_label.add_theme_color_override("font_color", Color("edd2a7") if identified else Color("79929e"))
 		identity_box.add_child(name_label)
 		var status := Label.new()
-		status.text = "ALIBI CONFIRMÉ" if row.alibi == "confirmé" else "ALIBI À VÉRIFIER" if row.alibi == "à vérifier" else "PISTE OUVERTE" if identified else "À IDENTIFIER"
+		status.text = "ALIBI CONFIRMÉ" if row.alibi == "confirmé" else "RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "FAITS INCOMPATIBLES" if not row.get("deductions", []).is_empty() else "À VÉRIFIER" if row.alibi == "à vérifier" else "NOM CITÉ" if identified and not row.get("profile_known", true) else "PISTE OUVERTE" if identified else "À IDENTIFIER"
+		status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		status.add_theme_font_size_override("font_size", 11)
 		status.add_theme_color_override("font_color", Color("d9aa73") if identified else Color("647e8c"))
 		identity_box.add_child(status)
+		card.set_meta("status_label", status)
+		card.set_meta("original_status", status.text)
+		if row.get("whereabouts") is Dictionary:
+			var location := Label.new()
+			location.text = str(row.whereabouts.current.label)
+			location.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			location.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			location.add_theme_font_size_override("font_size", 11)
+			location.add_theme_color_override("font_color", Color("7895a3"))
+			identity_box.add_child(location)
+		_update_suspect_card(int(row.id))
+		if int(row.id) != notebook_selected:
+			continue
+		body = VBoxContainer.new()
+		body.add_theme_constant_override("separation", 16)
+		notebook_dossier.add_child(body)
+		var detail_header := HBoxContainer.new()
+		detail_header.add_theme_constant_override("separation", 12)
+		body.add_child(detail_header)
+		var detail_name := Label.new()
+		detail_name.text = str(row.name) if identified else "Profil non identifié"
+		detail_name.add_theme_font_size_override("font_size", 24)
+		detail_name.add_theme_color_override("font_color", Color("edd2a7"))
+		detail_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		detail_header.add_child(detail_name)
 		var exclude := Button.new()
-		exclude.custom_minimum_size = Vector2(96, 48)
+		exclude.custom_minimum_size = Vector2(96, 44)
 		exclude.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		exclude.add_theme_font_size_override("font_size", 13)
 		exclude.set_meta("suspect_note", int(row.id))
 		exclude.pressed.connect(_toggle_suspect_note.bind(int(row.id)))
-		top.add_child(exclude)
+		var note_actions := HBoxContainer.new()
+		detail_header.add_child(note_actions)
+		var follow := Button.new()
+		follow.custom_minimum_size = Vector2(0, 44)
+		follow.custom_minimum_size.x = 132
+		follow.add_theme_font_size_override("font_size", 13)
+		follow.set_meta("suspect_follow", int(row.id))
+		follow.pressed.connect(_toggle_suspect_priority.bind(int(row.id)))
+		note_actions.add_child(follow)
+		note_actions.add_child(exclude)
 		card.set_meta("note_button", exclude)
-		card.set_meta("status_label", status)
-		card.set_meta("original_status", status.text)
+		card.set_meta("follow_button", follow)
 		_update_suspect_card(int(row.id))
 		if not identified:
+			_notebook_text(body, "SIGNALEMENT INCONNU", "Aucune identité ni apparence apprise pour le moment. Le portrait restera en silhouette jusqu'à la rencontre ou la consultation de sa fiche.", Color("7895a3"))
 			continue
+		var comparisons: Array = row.get("deductions", [])
+		if not comparisons.is_empty():
+			var reasons := []
+			for comparison in comparisons:
+				reasons.append(str(comparison.text))
+			_notebook_text(body, "RECOUPEMENTS", "\n".join(reasons), Color("8fd6d1"))
 		var home = row.get("home")
 		if home is Dictionary and view["places"].has(home.get("region", "")):
 			var address_heading := Label.new()
@@ -1472,8 +1695,8 @@ func _draw_notebook() -> void:
 			address_heading.add_theme_color_override("font_color", Color("89b5c5"))
 			body.add_child(address_heading)
 			var address := Button.new()
-			address.text = "%s\n%s" % [_district_title(home.region), home.label]
-			address.custom_minimum_size.y = 56
+			address.text = "%s · %s" % [home.label, _district_title(home.region)]
+			address.custom_minimum_size.y = 44
 			address.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			address.add_theme_font_size_override("font_size", 14)
 			address.add_theme_color_override("font_color", Color("a5dadd"))
@@ -1483,13 +1706,26 @@ func _draw_notebook() -> void:
 			body.add_child(address)
 			card.set_meta("home_button", address)
 		var traits := []
+		var whereabouts = row.get("whereabouts")
+		if whereabouts is Dictionary:
+			var now_activity := "" if whereabouts.current.activity == "chez soi" else " · " + str(whereabouts.current.activity)
+			var next_text := "reste ici" if whereabouts.current == whereabouts.next else str(whereabouts.next.label) + ("" if whereabouts.next.activity == "chez soi" else " · " + str(whereabouts.next.activity))
+			_notebook_text(body, "OÙ LE RETROUVER", "Maintenant : %s%s\nProchain tour : %s" % [whereabouts.current.label, now_activity, next_text], Color("8fd6d1"))
+			if home == null or whereabouts.current.place != home.place:
+				var locate_person := Button.new()
+				locate_person.text = "Repérer sa position"
+				locate_person.custom_minimum_size.y = 44
+				locate_person.set_meta("locate_person", int(row.id))
+				locate_person.pressed.connect(_locate_note_place.bind(str(whereabouts.current.place)))
+				body.add_child(locate_person)
+		var secondary := _notebook_fold(body, "Portrait, contexte et déclarations")
 		for trait_key in row.traits:
 			traits.append("%s : %s" % [trait_key.capitalize(), row.traits[trait_key]])
 		if not traits.is_empty():
-			_notebook_text(body, "PORTRAIT", "  ·  ".join(traits), Color("b1c4ce"))
+			_notebook_text(secondary, "PORTRAIT", "  ·  ".join(traits), Color("b1c4ce"))
 		var life = row.get("life")
 		if life is Dictionary:
-			_notebook_text(body, "PROJET & PRESSION · À RECOUPER", "Projet : %s\nPression : %s" % [life.goal, life.pressure], Color("d9aa73"))
+			_notebook_text(secondary, "PROJET & PRESSION · À RECOUPER", "Projet : %s\nPression : %s" % [life.goal, life.pressure], Color("d9aa73"))
 		var relationship = row.get("relationship")
 		if relationship is Dictionary:
 			var link_text := "Sa déclaration : %s" % (relationship.claim if relationship.claim != null else "pas encore demandé")
@@ -1497,20 +1733,194 @@ func _draw_notebook() -> void:
 				link_text += "\nSelon %s : %s" % [", ".join(relationship.witnesses), relationship.reported]
 			_notebook_text(body, "LIEN CONTESTÉ · À CONFRONTER" if relationship.contradiction else "LIEN AVEC LA VICTIME · SOURCES", link_text, Color("e4b27b"))
 		if row.claim != null:
-			_notebook_text(body, "ALIBI · " + str(row.alibi).to_upper(), str(row.claim).capitalize() + (" avec " + ", ".join(row["with"]) if not row["with"].is_empty() else ""), Color("b1c4ce"))
+			var evening_title := "ALIBI · CONFIRMÉ" if row.alibi == "confirmé" else "SOIRÉE · RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "SOIRÉE · RÉCIT À VÉRIFIER"
+			_notebook_text(body, evening_title, str(row.claim) + (" avec " + ", ".join(row["with"]) if not row["with"].is_empty() else ""), Color("b1c4ce"))
+		if row.get("corroboration") != null:
+			_notebook_text(body, "SOURCE INDÉPENDANTE · PROPOS RECUEILLIS", str(row.corroboration), Color("83e5b3"))
 		if not row.said.is_empty():
-			_notebook_text(body, "DÉCLARATIONS · NON PROUVÉES", "\n".join(row.said), Color("d9aa73"))
+			_notebook_text(secondary, "DÉCLARATIONS · NON PROUVÉES", "\n".join(row.said), Color("d9aa73"))
+		var next_section := 1
+		for section in body.get_children():
+			var heading: String = section.get_meta("notebook_heading", "")
+			if heading.begins_with("RECOUPEMENTS") or heading.begins_with("ALIBI") or heading.begins_with("SOIRÉE") or heading.begins_with("SOURCE INDÉPENDANTE"):
+				body.move_child(section, next_section)
+				next_section += 1
+		body.move_child(secondary.get_parent(), body.get_child_count() - 1)
 	_update_notebook_summary()
 
 func _set_notebook_tab(id: String) -> void:
 	notebook_tab = id
+	notebook_evidence.visible = id == "evidence"
 	notebook_dossier.visible = id == "people"
 	notebook_notes.visible = id == "notes"
 	notebook_leads.visible = id == "leads"
+	notebook_contacts.visible = id == "contacts"
+	notebook_timeline.visible = id == "timeline"
 	for key in notebook_tabs:
 		notebook_tabs[key].set_pressed_no_signal(key == id)
 	if notebook_scroll != null:
 		notebook_scroll.scroll_vertical = 0
+
+func _select_notebook_suspect(id: int) -> void:
+	notebook_selected = id
+	var position := notebook_suspect_scroll.scroll_vertical
+	_draw_notebook()
+	_set_notebook_tab("people")
+	notebook_suspect_scroll.set_deferred("scroll_vertical", position)
+
+func _notebook_note_title(note: Dictionary) -> String:
+	# Only public text and acquired dossier fields. Never consult hidden actors.
+	if note.get("category", "") == "police_record" and str(note.text).begins_with("Fiche de "):
+		return "Casier · " + str(note.text).trim_prefix("Fiche de ").get_slice(".", 0)
+	var speakers := []
+	for row in view.get("notebook", []):
+		if row.name == "?":
+			continue
+		if note.get("category", "") == "personal_account" and row.get("claim") == note.text:
+			speakers.append(str(row.name))
+		elif note.get("category", "") == "corroboration" and row.get("corroboration") == note.text:
+			speakers.append(str(row.name))
+	return str(note.title) + (" · " + ", ".join(speakers) if not speakers.is_empty() else "")
+
+func _draw_notebook_evidence() -> void:
+	var journal: Array = view.get("journal", []).filter(func(note): return note.get("category", "") != "person")
+	notebook_tabs.evidence.text = "Éléments · %d" % journal.size()
+	if journal.is_empty():
+		_notebook_text(notebook_evidence, "L'AFFAIRE COMMENCE ICI", "Vos découvertes, documents et témoignages prendront place ici. Les portraits à droite ouvrent les fiches individuelles.", Color("89b5c5"))
+		if not view.get("facts", []).is_empty():
+			_notebook_text(notebook_evidence, "FAITS ÉTABLIS", "\n\n".join(view.facts), Color("8fd6d1"))
+		if not view.get("trusted", []).is_empty():
+			_notebook_text(notebook_evidence, "SOURCES PARTAGÉES", "\n\n".join(view.trusted), Color("89b5c5"))
+		return
+	if notebook_open_evidence == -1:
+		notebook_open_evidence = int(journal[-1].id)
+	for i in range(journal.size() - 1, -1, -1):
+		var note: Dictionary = journal[i]
+		var expanded := notebook_open_evidence == int(note.id)
+		var card := PanelContainer.new()
+		card.set_meta("evidence_id", note.id)
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("112432") if expanded else Color("0e1d2a")
+		style.border_color = Color("4f8c99") if expanded else Color("253c48")
+		style.border_width_bottom = 1
+		style.set_content_margin_all(12)
+		style.set_corner_radius_all(5)
+		card.add_theme_stylebox_override("panel", style)
+		notebook_evidence.add_child(card)
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 8)
+		card.add_child(body)
+		var heading := Button.new()
+		heading.text = ("▾  " if expanded else "▸  ") + _notebook_note_title(note)
+		heading.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		heading.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		heading.custom_minimum_size.y = 44
+		heading.add_theme_font_size_override("font_size", 17)
+		for state in ["normal", "hover", "pressed", "hover_pressed"]:
+			heading.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+		heading.set_meta("read_evidence", int(note.id))
+		heading.pressed.connect(_open_notebook_evidence.bind(int(note.id)))
+		body.add_child(heading)
+		var provenance := Label.new()
+		provenance.text = "%s · Tour %d · %s" % [str(note.kind).capitalize(), note.turn, note.source]
+		provenance.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		provenance.add_theme_font_size_override("font_size", 11)
+		provenance.add_theme_color_override("font_color", Color("c0a079") if note.kind in ["soupçon", "déclaration", "témoignage", "récit de soirée"] else Color("85b7c5"))
+		body.add_child(provenance)
+		var text := Label.new()
+		text.text = str(note.text) if expanded else str(note.text).replace("\n", " ").left(95) + ("…" if str(note.text).length() > 95 else "")
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text.add_theme_font_size_override("font_size", 17 if expanded else 14)
+		text.add_theme_constant_override("line_spacing", 5 if expanded else 2)
+		text.add_theme_color_override("font_color", Color("d3e0e5") if expanded else Color("91acb7"))
+		body.add_child(text)
+		if expanded:
+			for place in note.get("leads", []):
+				if not view.places.has(place):
+					continue
+				var locate := Button.new()
+				locate.text = "Repérer · " + str(view.places[place].label)
+				locate.custom_minimum_size.y = 44
+				locate.pressed.connect(_locate_note_place.bind(str(place)))
+				body.add_child(locate)
+	# Legacy multiplayer can supply shared facts not copied into this player's
+	# journal. Keep them reachable; the causal engine's facts already have notes.
+	if not view.has("engine") and (not view.get("facts", []).is_empty() or not view.get("trusted", []).is_empty()):
+		var established := _notebook_fold(notebook_evidence, "Faits établis et sources partagées")
+		if not view.get("facts", []).is_empty():
+			_notebook_text(established, "VOS FAITS ÉTABLIS", "\n\n".join(view.facts), Color("8fd6d1"))
+		if not view.get("trusted", []).is_empty():
+			_notebook_text(established, "SOURCES PARTAGÉES", "\n\n".join(view.trusted), Color("89b5c5"))
+
+func _open_notebook_evidence(id: int) -> void:
+	notebook_open_evidence = -2 if notebook_open_evidence == id else id
+	for child in notebook_evidence.get_children():
+		notebook_evidence.remove_child(child)
+		child.queue_free()
+	_draw_notebook_evidence()
+	await get_tree().process_frame
+	for card in notebook_evidence.get_children():
+		if int(card.get_meta("evidence_id", -1)) == id:
+			notebook_scroll.ensure_control_visible(card.get_child(0).get_child(0))
+			return
+
+func _draw_notebook_timeline() -> void:
+	for child in notebook_timeline.get_children():
+		notebook_timeline.remove_child(child)
+		child.queue_free()
+	var timing: Dictionary = view.get("crime_timing", {})
+	_notebook_text(notebook_timeline, "PÉRIODE DU CRIME · " + str(timing.get("label", "Inconnue")), "Rapport reçu · période estimée, pas une minute exacte." if timing.get("state", "") == "known" else str(timing.get("objective", "Consulter le médecin légiste à la morgue.")), Color("ff7889"))
+	var locate := Button.new()
+	locate.text = "Repérer la morgue · à l'hôpital"
+	locate.custom_minimum_size.y = 48
+	locate.pressed.connect(_locate_note_place.bind("morgue"))
+	var rows: Array = view.get("timeline", [])
+	if rows.is_empty():
+		_notebook_text(notebook_timeline, "PAS ENCORE D'HORAIRE RECUEILLI", "Les récits, les images et le rapport apparaîtront ici au fil de l'enquête.", Color("d5ac77"))
+	else:
+		var strip := preload("res://timeline_strip.gd").new()
+		strip.events = rows
+		strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		notebook_timeline.add_child(strip)
+	_notebook_text(notebook_timeline, "HIER · COMPARER LES HORAIRES", "Ambre : déclaration. Vert : récit corroboré. Cyan : CCTV. Corail : période médicale. Un passage isolé n'est pas un alibi.", Color("89b5c5"))
+	notebook_timeline.add_child(locate)
+	if not rows.is_empty():
+		for row in rows:
+			var status := "RAPPORT MÉDICAL" if row.kind == "medical" else "IMAGE HORODATÉE" if row.kind == "camera" else "RENDEZ-VOUS PRÉVU" if row.status == "planned" else "RÉCIT CORROBORÉ" if row.status == "verified" else "DÉCLARATION · À VÉRIFIER"
+			_notebook_text(notebook_timeline, status + " · " + str(row.title), str(row.text), Color("83e5b3") if row.status == "verified" else Color("eab779"))
+
+func _draw_notebook_contacts() -> void:
+	for child in notebook_contacts.get_children():
+		notebook_contacts.remove_child(child)
+		child.queue_free()
+	var contacts: Array = view.get("contacts", [])
+	notebook_tabs.contacts.text = "Contacts · %d" % contacts.size()
+	_notebook_text(notebook_contacts, "PERSONNEL & TÉMOINS", "Ces personnes sont des sources d'information, pas des suspects du dossier.", Color("ed85ac"))
+	if contacts.is_empty():
+		_notebook_text(notebook_contacts, "AUCUN CONTACT NOTÉ", "Les personnes rencontrées ou citées apparaîtront ici.", Color("89b5c5"))
+	for contact in contacts:
+		var card := PanelContainer.new()
+		card.set_meta("contact_id", contact.id)
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("211d30")
+		style.border_color = Color("b76b94")
+		style.border_width_left = 3
+		style.set_corner_radius_all(6)
+		style.set_content_margin_all(14)
+		card.add_theme_stylebox_override("panel", style)
+		notebook_contacts.add_child(card)
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 10)
+		card.add_child(body)
+		_notebook_text(body, str(contact.role).to_upper() + " · " + ("RENCONTRÉ" if contact.met else "CITÉ"), str(contact.name), Color("ed85ac"))
+		var locate := Button.new()
+		locate.text = "Repérer · " + str(contact.place_label)
+		locate.custom_minimum_size.y = 48
+		locate.pressed.connect(_locate_note_place.bind(str(contact.place)))
+		body.add_child(locate)
+		if not contact.statements.is_empty():
+			_notebook_text(body, "PROPOS RECUEILLIS", "\n\n".join(contact.statements), Color("a9c9d4"))
 
 func _draw_notebook_notes() -> void:
 	for child in notebook_notes.get_children():
@@ -1553,7 +1963,7 @@ func _draw_notebook_notes() -> void:
 		source.add_theme_font_size_override("font_size", 11)
 		source.modulate = Color("89b5c5")
 		body.add_child(source)
-		_notebook_text(body, str(note.title).to_upper(), str(note.text), Color("edd2a7"))
+		_notebook_text(body, _notebook_note_title(note).to_upper(), str(note.text), Color("edd2a7"))
 		for place in note.get("leads", []):
 			if not view.places.has(place):
 				continue
@@ -1577,15 +1987,18 @@ func _draw_notebook_leads() -> void:
 		child.queue_free()
 	var leads: Array = view.get("leads", [])
 	notebook_tabs.leads.text = "Pistes · %d" % leads.size()
-	_notebook_text(notebook_leads, "VOTRE ENQUÊTE, VOS CHOIX", "Des chemins possibles, pas des ordres. Vous pouvez les suivre ou explorer librement. Un soupçon seul ne suffit jamais.", Color("8fd9d5"))
+	_notebook_text(notebook_leads, "QUESTIONS EN SUSPENS", "Vos échanges et vos découvertes, regroupés par sujet. Repérer un lieu ne dépense pas de PA.", Color("8fd9d5"))
 	if leads.is_empty():
-		_notebook_text(notebook_leads, "PAR OÙ COMMENCER ?", "Relever le constat sur la scène extérieure, visiter le domicile de la victime ou rencontrer les habitants.", Color("d5ac77"))
+		_notebook_text(notebook_leads, "AUCUNE PISTE NOTÉE", "La scène de crime, le domicile de la victime et les habitants sont accessibles sur la carte.", Color("d5ac77"))
 	for item in leads:
 		var card := PanelContainer.new()
 		card.set_meta("lead_id", item.id)
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color("122536")
-		style.border_color = Color("59aaa9") if item.complete else Color("d9a269")
+		style.border_color = Color("83e5b3") if item.complete else Color("d9a269")
+		if item.complete:
+			style.shadow_color = Color("83e5b3", 0.13)
+			style.shadow_size = 6
 		style.border_width_left = 3
 		style.set_corner_radius_all(8)
 		style.set_content_margin_all(16)
@@ -1594,7 +2007,11 @@ func _draw_notebook_leads() -> void:
 		var body := VBoxContainer.new()
 		body.add_theme_constant_override("separation", 8)
 		card.add_child(body)
-		_notebook_text(body, ("SOURCE RECUEILLIE · " if item.complete else "À EXPLORER · ") + str(item.title).to_upper(), str(item.reason) + "\n\n" + str(item.objective), Color("8fd9d5") if item.complete else Color("ebbe88"))
+		var lead_status := "HYPOTHÈSE INFIRMÉE · " if item.get("state", "") == "refuted" else "RÉCIT CORROBORÉ · " if item.get("state", "") == "corroborated" else "ALIBI CONFIRMÉ · " if item.get("state", "") == "confirmed" and str(item.id).begins_with("evening:") else "À RECOUPER · " if item.get("state", "") == "awaiting_time" else "SOURCE RECUEILLIE · " if item.complete else "À EXPLORER · "
+		var lead_text := str(item.reason)
+		if not str(item.objective).is_empty():
+			lead_text += "\n\n" + str(item.objective)
+		_notebook_text(body, lead_status + str(item.title).to_upper(), lead_text, Color("8fd9d5") if item.complete else Color("ebbe88"))
 		var destinations := GridContainer.new()
 		destinations.columns = 2
 		destinations.add_theme_constant_override("h_separation", 8)
@@ -1620,14 +2037,29 @@ func _locate_residence(home: Dictionary) -> void:
 	interior.hide()
 	navigation.close_sheet()
 	_focus(region)
+	_pin_district(region)
 	case_toasts.note("Domicile repéré", "%s · %s" % [_district_title(region), home.label])
 
+func _pin_district(region: String) -> void:
+	navigation.pinned_region = region
+	for entry in navigation.entries:
+		if entry.get("region", "") == region:
+			return
+	var route: Dictionary = view.get("routes", {}).get(region, {})
+	var callback := _play_option.bind(route.key.duplicate(true)) if route.get("available", false) else Callable()
+	navigation.add_district(nodes[region].position + Vector3(0, 1.8, 0), _district_title(region), _district_locations(region), int(route.get("cost", 0)), callback, region, route.get("available", false), _presence(region, true), _is_crime_region(region))
+
 func _load_case_notes() -> void:
-	var case_id := "solo:%s:%s" % [view.get("solo", {}).get("seed", SEED), view.get("player", NAME)] if solo_mode else "server:%s:%s" % [server_url, view.get("player", NAME)]
+	var session_data: Dictionary = view.get("solo", {})
+	var instance := str(session_data.get("case_id", "seed:" + str(int(session_data.get("seed", SEED)))))
+	var case_id := "solo:%s:%s:%s" % [view.get("engine", "legacy"), instance, view.get("player", NAME)] if solo_mode else "server:%s:%s" % [server_url, view.get("player", NAME)]
 	if case_id == notes_case:
 		return
 	notes_case = case_id
+	notebook_selected = -1
+	notebook_open_evidence = -1
 	manual_exclusions.clear()
+	manual_priorities.clear()
 	var config := ConfigFile.new()
 	if config.load(notes_path) == OK:
 		var saved = config.get_value("suspects", notes_case, {})
@@ -1635,6 +2067,11 @@ func _load_case_notes() -> void:
 			for id in saved:
 				if saved[id] == true:
 					manual_exclusions[str(id)] = true
+		var followed = config.get_value("following", notes_case, {})
+		if followed is Dictionary:
+			for id in followed:
+				if followed[id] == true and not manual_exclusions.has(str(id)):
+					manual_priorities[str(id)] = true
 
 func _toggle_suspect_note(id: int) -> void:
 	var key := str(id)
@@ -1642,26 +2079,91 @@ func _toggle_suspect_note(id: int) -> void:
 		manual_exclusions.erase(key)
 	else:
 		manual_exclusions[key] = true
+		manual_priorities.erase(key)
 	_update_suspect_card(id)
 	_update_notebook_summary()
+	_reorder_suspect_cards()
+	_save_case_notes()
+
+func _toggle_suspect_priority(id: int) -> void:
+	var key := str(id)
+	if manual_priorities.has(key):
+		manual_priorities.erase(key)
+	else:
+		manual_priorities[key] = true
+		manual_exclusions.erase(key)
+	_update_suspect_card(id)
+	_update_notebook_summary()
+	_reorder_suspect_cards()
+	_save_case_notes()
+
+func _save_case_notes() -> void:
 	var config := ConfigFile.new()
 	var load_error := config.load(notes_path)
 	if load_error != OK and load_error != ERR_FILE_NOT_FOUND:
 		case_toasts.note("Notes personnelles illisibles", "Fichier conservé. Votre choix reste visible pour cette session.")
 		return
 	config.set_value("suspects", notes_case, manual_exclusions)
+	config.set_value("following", notes_case, manual_priorities)
 	if config.save(notes_path) != OK:
 		case_toasts.note("Note non sauvegardée", "Votre choix reste visible pour cette session.")
+
+func _suspect_note_rank(id: int, unknown: bool) -> int:
+	if manual_exclusions.has(str(id)):
+		return 3
+	if manual_priorities.has(str(id)):
+		return 0
+	return 2 if unknown else 1
+
+func _reorder_suspect_cards() -> void:
+	# FLIP: let the grid compute final slots, then animate existing cards to them.
+	# No engine action, and no sorting by hidden suspect identities.
+	notebook_reflow_generation += 1
+	var generation := notebook_reflow_generation
+	if notebook_reflow != null:
+		notebook_reflow.kill()
+	var origins := {}
+	var ordered := notebook_grid.get_children()
+	for card in ordered:
+		origins[card] = card.position
+	ordered.sort_custom(func(a, b):
+		var rank_a := _suspect_note_rank(int(a.get_meta("suspect_id")), bool(a.get_meta("unknown")))
+		var rank_b := _suspect_note_rank(int(b.get_meta("suspect_id")), bool(b.get_meta("unknown")))
+		return rank_a < rank_b if rank_a != rank_b else int(a.get_meta("display_order")) < int(b.get_meta("display_order")))
+	for i in ordered.size():
+		notebook_grid.move_child(ordered[i], i)
+	notebook_grid.queue_sort()
+	await get_tree().process_frame
+	if generation != notebook_reflow_generation:
+		return
+	notebook_reflow = create_tween().set_parallel(true)
+	for card in ordered:
+		var destination: Vector2 = card.position
+		card.position = origins[card]
+		notebook_reflow.tween_property(card, "position", destination, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 func _update_suspect_card(id: int) -> void:
 	if not notebook_cards.has(id):
 		return
 	var card: Control = notebook_cards[id]
 	var excluded := manual_exclusions.has(str(id))
+	var followed := manual_priorities.has(str(id))
 	card.modulate.a = 0.42 if excluded else 1.0
-	card.get_meta("note_button").text = "Réactiver" if excluded else "Écarter"
-	card.get_meta("note_button").tooltip_text = "Note personnelle uniquement · aucun effet sur les règles"
-	card.get_meta("status_label").text = "ÉCARTÉ PAR VOUS" if excluded else card.get_meta("original_status")
+	if card.has_meta("note_button"):
+		card.get_meta("note_button").text = "Réactiver" if excluded else "Écarter"
+		card.get_meta("note_button").tooltip_text = "Note personnelle uniquement · aucun effet sur les règles"
+		card.get_meta("follow_button").text = "Ne plus suivre" if followed else "À investiguer"
+		card.get_meta("follow_button").tooltip_text = "Priorité personnelle uniquement · aucun effet sur les règles"
+	card.get_meta("status_label").text = "ÉCARTÉ PAR VOUS" if excluded else "À INVESTIGUER" if followed else card.get_meta("original_status")
+	var style: StyleBoxFlat = card.get_theme_stylebox("panel").duplicate()
+	var corroborated: bool = card.get_meta("corroborated", false)
+	style.bg_color = Color("15333e") if followed or id == notebook_selected else Color("0d1e2d") if card.get_meta("unknown") else Color("122536")
+	style.border_color = Color("63e1ec") if followed else Color("83e5b3") if corroborated else Color("294353") if card.get_meta("unknown") else Color("b69366")
+	style.shadow_color = Color("83e5b3", 0.16) if corroborated and not excluded else Color.TRANSPARENT
+	style.shadow_size = 3 if corroborated and not excluded else 0
+	style.border_width_left = 5 if followed else 3
+	card.add_theme_stylebox_override("panel", style)
+	card.get_meta("status_label").add_theme_color_override("font_color", Color("63e1ec") if followed else Color("83e5b3") if corroborated else Color("647e8c") if card.get_meta("unknown") else Color("d9aa73"))
 
 func _update_notebook_summary() -> void:
 	var identified := 0
@@ -1669,21 +2171,48 @@ func _update_notebook_summary() -> void:
 		if row.name != "?":
 			identified += 1
 	var notes_count := manual_exclusions.size()
-	notebook_summary.text = "%d / %d identifiés · %d preuves · %d documents\n%d %s par vous" % [identified, view["notebook"].size(), view["facts"].size(), view.get("progress", {}).get("documents", 0), notes_count, "piste écartée" if notes_count == 1 else "pistes écartées"]
+	notebook_summary.text = "Affaire %d  ·  %d pistes" % [int(view.get("solo", {}).get("seed", SEED)), view.get("leads", []).size()]
+	notebook_suspect_heading.text = "SUSPECTS  ·  %d / %d identifiés" % [identified, view["notebook"].size()]
+	notebook_suspect_heading.tooltip_text = "%d à investiguer · %d écartés par vous" % [manual_priorities.size(), notes_count]
+
+func _notebook_fold(parent: Control, title: String) -> VBoxContainer:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 12)
+	parent.add_child(section)
+	var toggle := Button.new()
+	toggle.text = "▸  " + title
+	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle.custom_minimum_size.y = 44
+	toggle.add_theme_font_size_override("font_size", 14)
+	section.add_child(toggle)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 18)
+	content.hide()
+	section.add_child(content)
+	toggle.pressed.connect(func():
+		content.visible = not content.visible
+		toggle.text = ("▾  " if content.visible else "▸  ") + title)
+	return content
 
 func _notebook_text(parent: Control, label: String, content: String, color: Color) -> void:
+	var section := VBoxContainer.new()
+	section.set_meta("notebook_heading", label)
+	section.add_theme_constant_override("separation", 6)
+	parent.add_child(section)
 	var heading := Label.new()
 	heading.text = label
 	heading.add_theme_font_size_override("font_size", 11)
 	heading.add_theme_color_override("font_color", color)
-	parent.add_child(heading)
+	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	section.add_child(heading)
 	var text := Label.new()
 	text.text = content
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text.add_theme_font_size_override("font_size", 14)
+	text.add_theme_font_size_override("font_size", 16)
+	text.add_theme_constant_override("line_spacing", 4)
 	text.add_theme_color_override("font_color", Color("c0d0d8"))
-	parent.add_child(text)
+	section.add_child(text)
 
 func _finish_turn() -> void:
 	if solo_busy or turn_transition.playing or qte_active or view.get("pending") != null:

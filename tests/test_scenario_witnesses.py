@@ -263,24 +263,24 @@ def test_cli_stage7_and_legacy_physics_reproducible():
     assert row["audit"]["artifacts_acquired"] == row["audit"]["artifacts_total"]
 
 
-def test_two_independent_ambiguous_eyewitnesses_can_cross_without_one_magic_clue():
+def test_two_eyewitnesses_of_the_act_hand_out_one_trait_at_most():
+    # The scene alone never converges: one witness keeps a trait, the other gives the
+    # time and a silhouette. The second trait comes from elsewhere (camera, prints).
     base = crime(235)
-    for index in range(60):
+    traits = 0
+    for index in range(30):
         layer = WitnessBuilder(f"235:{index}").build(base, focus_assault=2)
         plan = with_witnesses(project(base), layer)
-        if plan.graph().remaining(a.id for a in plan.artifacts if a.kind == "testimony") == {base.kernel.roles.author}:
-            break
-    else:
-        pytest.fail("No independent ambiguous descriptions converged")
-    interviews = [a for a in plan.actions if a.operation is Operation.INTERVIEW]
-    supports = []
-    for action in interviews:
-        support = plan.population
-        for key in action.reveals:
-            support &= next(a.candidates for a in plan.artifacts if a.id == key)
-        assert len(support) >= 2
-        supports.append(support)
-    assert plan.population.intersection(*supports) == {base.kernel.roles.author}
+        described = [p for p in layer.perceptions if p.event == "assault" and p.aspect is not Aspect.SILHOUETTE]
+        assert len(described) <= 1
+        traits += len(described)
+        assert len(plan.graph().remaining(a.id for a in plan.artifacts if a.kind == "testimony")) >= 2
+        for action in (a for a in plan.actions if a.operation is Operation.INTERVIEW):
+            support = plan.population
+            for key in action.reveals:
+                support &= next(a.candidates for a in plan.artifacts if a.id == key)
+            assert len(support) >= 2
+    assert traits >= 10
 
 
 def test_witness_audit_optional_and_base_distribution_unchanged():

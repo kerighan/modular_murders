@@ -233,12 +233,22 @@ def crime_window(crime):
 RIDGES = ("boucle A", "arc B", "spirale C", "boucle D")  # partial patterns: a few people share each one
 
 
-def build_evidence(crime, seed=0, appearances=None, *, required_alibis=(), partial_alibis=0.0):
+def build_evidence(crime, seed=0, appearances=None, *, required_alibis=(), partial_alibis=0.0, described=()):
     rng = random.Random(f"evidence-v1:{seed}")
     people, x = crime.kernel.world.people, crime.execution
     appearances = appearances or sample_appearances((p.id for p in people), seed)
     streets = [n.id for n in crime.streets.nodes if n.kind is NodeKind.STREET]
-    cameras = tuple(Camera(p, rng.choice(tuple(Aspect)), rng.random() < .85) for p in streets)
+    cameras = []
+    fresh_angle = random.Random(f"camera-aspect-v1:{seed}")
+    for p in streets:
+        aspect, online = rng.choice(tuple(Aspect)), rng.random() < .85
+        if p == crime.scene and (aspect is Aspect.SILHOUETTE or aspect in described):
+            # The scene camera shows what the witnesses did not: the trip to the footage pays.
+            fresh = [a for a in Aspect if a is not Aspect.SILHOUETTE and a not in described]
+            if fresh:
+                aspect = fresh_angle.choice(fresh)
+        cameras.append(Camera(p, aspect, online))
+    cameras = tuple(cameras)
     disposal = None
     if x.tool_fate is ToolFate.HIDDEN:
         place = x.hidden_at

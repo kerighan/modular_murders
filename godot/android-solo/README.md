@@ -1,5 +1,23 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.31-causal** : `../builds/nexus-city-solo-debug-v31.apk`.
+Jauge tournante : tout le monde peut crocheter une porte ; sans la
+compétence, une aiguille tourne et il faut toucher l'écran quand elle passe
+dans la zone verte (un tour pour lire, deux tours avant l'échec automatique).
+Dans la zone : la porte s'ouvre ; à côté : le crochet ripe, 1 PA perdu, on
+peut réessayer. La compétence Crochetage saute la jauge. Le score est
+enregistré avec le coup (la reprise d'une partie ne rejoue pas la jauge).
+Même moteur `causal-3d-v9`, même signature, nouvelles affaires.
+
+
+Version **0.30-causal** : `../builds/nexus-city-solo-debug-v30.apk`.
+Signalement moins frontal : sur la scène, un seul témoin décrit un trait,
+les autres ne donnent que l'heure et une silhouette ; la caméra du quartier
+montre toujours un trait différent de celui des témoins, le détour par la
+Régie vidéo rapporte donc quelque chose. Même moteur `causal-3d-v9` et même
+signature que la v29 (nouvelles affaires tout de même : les seeds changent).
+
+
 Version **0.29-causal** : `../builds/nexus-city-solo-debug-v29.apk`.
 Tissu social : les collègues d'un même lieu de travail se connaissent toujours
 (« On travaille ensemble »), les gens d'une même rue le plus souvent, et le

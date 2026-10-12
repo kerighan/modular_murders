@@ -61,7 +61,10 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
     neutral = sorted(p.id for p in life.people.values() if p.id not in (
         victim, crime.kernel.roles.author, crime.kernel.roles.other))
     narrative_people.update(random.Random(f"early-progress:{seed}").sample(neutral, 2))
-    evidence = build_evidence(crime, seed, witnesses.appearances, required_alibis=narrative_people, partial_alibis=partial_alibis)
+    decisive = {e.id for e in witnesses.events if e.kind in (EventKind.ASSAULT, EventKind.DRINK_ADDITION)}
+    described = {p.aspect for p in witnesses.perceptions if p.event in decisive and p.aspect is not Aspect.SILHOUETTE}
+    evidence = build_evidence(crime, seed, witnesses.appearances, required_alibis=narrative_people,
+                              partial_alibis=partial_alibis, described=described)
     evenings = build_evenings(crime, evidence, seed)
     registrations = build_registrations(crime)
     plan = with_witnesses(project(crime), witnesses)

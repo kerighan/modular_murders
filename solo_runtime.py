@@ -86,7 +86,7 @@ class SoloSession:
         self.case_id = uuid.uuid4().hex
         if self.engine == "causal":
             from causal_game import CausalGame
-            self.game = CausalGame(self.seed, [self.name])
+            self.game = CausalGame(self.seed, [self.name], challenge=self._challenge)
         else:
             self.game = Game(self.seed, [self.name], challenge=self._challenge)
         self.equipped = False
@@ -115,7 +115,7 @@ class SoloSession:
         self.case_id = data.get("case_id") or self.case_id
         if self.engine == "causal":
             from causal_game import CausalGame
-            self.game = CausalGame.restore(self.seed, self.name, data["game"], data["equipped"])
+            self.game = CausalGame.restore(self.seed, self.name, data["game"], data["equipped"], challenge=self._challenge)
             self.equipped = data["equipped"]
             return
         if data["equipped"]:

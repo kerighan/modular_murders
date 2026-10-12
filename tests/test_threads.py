@@ -288,3 +288,20 @@ def test_a_sour_breakup_inside_the_story_gives_both_exes_a_pointed_answer():
             assert fact.detail in ("venom", "neutral")
             seen += 1
     assert seen >= 3
+
+
+def test_the_scene_hands_out_one_trait_and_the_camera_shows_another():
+    from scenario_play import sample_playable
+    from scenario_witnesses import EventKind, Aspect
+    checked = 0
+    for seed in range(40):
+        case = sample_playable(seed)
+        witnesses = case.witnesses
+        decisive = {e.id for e in witnesses.events if e.kind in (EventKind.ASSAULT, EventKind.DRINK_ADDITION)}
+        described = {p.aspect for p in witnesses.perceptions if p.event in decisive and p.aspect is not Aspect.SILHOUETTE}
+        assert len(described) <= 1  # never two traits from the scene alone
+        camera = next((c for c in case.evidence.cameras if c.place == case.crime.scene), None)
+        if camera is not None and camera.online:
+            assert camera.aspect is not Aspect.SILHOUETTE and camera.aspect not in described
+            checked += 1
+    assert checked >= 10

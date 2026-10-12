@@ -462,10 +462,13 @@ class WitnessBuilder:
                                    and getattr(a, field) is getattr(look, field)]
                 if len(matching_people) >= 2:
                     aspects.append(aspect)
-            # The first witness authored for the decisive act keeps one trait when any
-            # is shareable: a case is never only silhouettes.
+            # One witness of the decisive act keeps one trait when any is shareable: a
+            # case is never only silhouettes. Any further witness of it gives the time and
+            # a silhouette: the scene alone never hands out two traits.
             if focus_assault and index == 0 and len(aspects) > 1:
                 aspects = aspects[1:]
+            elif focus_assault and index > 0:
+                aspects = [Aspect.SILHOUETTE]
             record(w, event, self.rng.choice(aspects))
         return WitnessLayer(crime, streets, appearances, events, tuple(witnesses), tuple(presences),
                             tuple(attention), tuple(perceptions))

@@ -141,7 +141,7 @@ const DISTRICT_NAMES := {
 	"police": "Quartier Central", "victim_house": "Résidence Verlaine",
 	"restaurant": "Quartier du Comptoir",
 }
-var qte: ProgressBar
+var qte: Control  # the timing dial (timing_dial.gd)
 var qte_active := false
 var qte_t := 0.0
 var equipped := false
@@ -307,10 +307,7 @@ func _process(delta: float) -> void:
 	for label in get_tree().get_nodes_in_group("labels"):  # constant size on screen whatever the zoom
 		label.pixel_size = label.get_meta("base") * cam.size / 28.0
 	if qte_active:
-		qte_t += delta
-		qte.value = max(0.0, 100.0 - qte_t * 50.0)
-		if qte_t > 2.0:
-			_answer_qte(0.0)
+		qte_t += delta  # the dial times itself out; this only tracks how long it has been up
 
 func _poll_server(delta: float) -> void:
 	ws.poll()
@@ -335,7 +332,7 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if qte_active and event.is_action_pressed("ui_accept"):
-		_answer_qte(1.0 if qte_t < 0.7 else 0.6 if qte_t < 1.4 else 0.25)
+		qte.hit()
 	# look around: drag with the mouse or a finger, zoom with the wheel
 	if (event is InputEventMouseButton or event is InputEventMouseMotion) and event.device == InputEvent.DEVICE_ID_EMULATION:
 		return  # screen-drag handles the finger; avoid panning twice
@@ -384,7 +381,6 @@ func _answer_qte(score: float) -> void:
 	if not qte_active:
 		return
 	qte_active = false
-	qte.visible = false
 	qte_button.visible = false
 	_send({"type": "score", "score": score})
 
@@ -446,10 +442,8 @@ func _on_message(msg: Dictionary) -> void:
 		"challenge":
 			qte_t = 0.0
 			qte_active = true
-			qte.visible = true
-			qte_button.visible = true
-			qte_button.text = "%s · Appuyez vite !" % str(msg["kind"]).capitalize()
-			dialogue.set_busy_hint("Approchez votre interlocuteur · touchez le bouton de persuasion.")
+			qte.start(str(msg["kind"]), float(msg.get("difficulty", 0.5)))
+			dialogue.set_busy_hint("Touchez quand l'aiguille est dans la zone.")
 			if "--shot" in OS.get_cmdline_user_args():  # review mode: a perfect reflex
 				_answer_qte(1.0)
 		"error":
@@ -1190,27 +1184,17 @@ func _build_hud() -> void:
 	header.position = Vector2(22, 16)
 	header.add_theme_color_override("font_color", Color("8cc6d7"))
 	hud.add_child(header)
-	qte = ProgressBar.new()
-	qte.visible = false
+	qte = preload("res://timing_dial.gd").new()
 	var challenge_layer := CanvasLayer.new()
 	challenge_layer.layer = 8 # Also above the city phase if an owner returns home.
 	add_child(challenge_layer)
 	challenge_layer.add_child(qte)
-	qte.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	qte.offset_left = -200
-	qte.offset_right = 200
-	qte.offset_top = -136
-	qte.offset_bottom = -108
-	qte_button = Button.new()
+	qte.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # the whole screen is the button
+	qte.answered.connect(_answer_qte)
+	qte_button = Button.new()  # kept for older code paths; the dial carries its own labels
 	qte_button.theme = interface_theme
 	qte_button.visible = false
 	challenge_layer.add_child(qte_button)
-	qte_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	qte_button.offset_left = -200
-	qte_button.offset_right = 200
-	qte_button.offset_top = -100
-	qte_button.offset_bottom = -24
-	qte_button.pressed.connect(func(): _answer_qte(1.0 if qte_t < 0.7 else 0.6 if qte_t < 1.4 else 0.25))
 	cards = VBoxContainer.new()
 	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cards.add_theme_constant_override("separation", 8)

@@ -820,7 +820,7 @@ def test_lockpick_only_opens_an_empty_private_home_and_costs_a_skill_slot():
     assert restored.view(restored.player) == game.view(game.player)
     without = fresh(skills=("fingerprints", "search"))
     travel(without, without.homes[home])
-    assert ("unlock_home", home) not in without.options()
+    assert "adresse" in without.options()[("unlock_home", home)]  # offered to all, the dial decides without the skill
 
 
 def test_next_day_positions_change_only_at_manual_turn_boundary():
@@ -1235,3 +1235,25 @@ def test_greeting_reveals_the_look_only_and_the_evening_waits_for_the_alibi_ques
     game.play(("ask", "evening"))
     assert "evening:" + pid in dict(game.session.state.known)
     assert next(r["alibi"] for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:])) == "à vérifier"
+
+
+def test_anyone_may_pick_a_lock_through_the_dial_and_the_score_replays():
+    scores = iter([0.2, 0.9])
+    game = CausalGame(0, ["Ada"], challenge=lambda kind, difficulty: next(scores))
+    game.equip(0, ("search", "rapport"), game.case.crime.scene, "facile")
+    game.start()
+    home = next(h for h in game.homes if not game.occupants(h) and not game.home_open(h))
+    travel(game, game.homes[home])
+    assert ("unlock_home", home) in game.options()  # no skill needed to try
+    game.play(("unlock_home", home))
+    assert game.session.place != home and game.history[-1] == ["unlock_home", home, 0.2]
+    game.play(("unlock_home", home))
+    assert game.session.place == home and game.history[-1] == ["unlock_home", home, 0.9]
+    restored = CausalGame.restore(0, "Ada", game.snapshot(), True, challenge=lambda kind, difficulty: 0.0)
+    assert restored.view(restored.player) == game.view(game.player)  # saved scores, no new dial
+    skilled = CausalGame(0, ["Ada"], challenge=lambda kind, difficulty: 0.0)
+    skilled.equip(0, ("fingerprints", "lockpick"), skilled.case.crime.scene, "facile")
+    skilled.start()
+    travel(skilled, skilled.homes[home])
+    skilled.play(("unlock_home", home))
+    assert skilled.session.place == home and skilled.history[-1] == ["unlock_home", home]  # the skill skips the dial

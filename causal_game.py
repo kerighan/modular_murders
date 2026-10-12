@@ -42,11 +42,18 @@ def at_label(label):
     return "à " + label
 
 
+LOCKPICK_DIFFICULTY = 0.55  # the dial's arc width and needle speed, 0 easy .. 1 hard
+PASS_MARK = 0.5  # inside the arc
+
+
 class CausalGame:
-    def __init__(self, seed, names):
+    def __init__(self, seed, names, challenge=None):
         if len(names) != 1:
             raise ValueError("Le générateur causal est actuellement solo.")
         self.seed = seed
+        # challenge(kind, difficulty) -> score in [0, 1]: the client's timing dial.
+        # Without a client (tests, audits) the hand is perfect.
+        self.challenge = challenge or (lambda kind, difficulty: 1.0)
         self.case = sample_playable(seed)
         self.session = PlaySession(self.case)
         self.players = [SimpleNamespace(name=names[0], items=set(), ap=6, place=self.session.place)]
@@ -145,10 +152,10 @@ class CausalGame:
                 "history": self.history, "priced_from": self.priced_from, "difficulty": self.difficulty}
 
     @classmethod
-    def restore(cls, seed, name, data, equipped):
+    def restore(cls, seed, name, data, equipped, challenge=None):
         if data.get("generator") != VERSION:
             raise ValueError("Version du générateur causal incompatible")
-        game = cls(seed, [name])
+        game = cls(seed, [name], challenge)
         # Older histories had free biography/about questions. Preserve those
         # past costs, then apply the new rule only to subsequent live questions.
         game.priced_from = data.get("priced_from", len(data["history"]))
@@ -442,8 +449,9 @@ class CausalGame:
             if street != s.place:
                 continue
             result[("ring", home)] = "Sonner" + (" (1 PA)" if any("profile:" + pid not in dict(s.state.known) for pid in self.occupants(home)) else "")
-            if not self.occupants(home) and not self.home_open(home) and "lockpick" in s.skills:
-                result[("unlock_home", home)] = "Crocheter la porte (1 PA)"
+            if not self.occupants(home) and not self.home_open(home):
+                # Anyone may try the lock; the skill skips the timing dial.
+                result[("unlock_home", home)] = "Crocheter la porte (1 PA" + (")" if "lockpick" in s.skills else " · adresse)")
         if (s.place == "cctv" or self._legacy_camera_replay) and "scene_body" in dict(s.state.known):
             result[("camera_menu",)] = "Consulter les archives vidéo"
         for obj in sorted(s.found):
@@ -465,6 +473,10 @@ class CausalGame:
 
     def play(self, key):
         key = tuple(key)
+        replayed_score = None
+        if key[:1] == ("unlock_home",) and len(key) == 3:  # a saved attempt carries its dial score
+            replayed_score = float(key[2])
+            key = key[:2]
         if self.session.finished and key == ("stop",):
             # Closing a conversation after the case is closed is always allowed: no dead end.
             self.speaker, self.camera_block, self.camera_place = None, None, None
@@ -504,11 +516,21 @@ class CausalGame:
                 self._cue("Personne ne répond. L'appartement est vide.", name=p.name)
         elif action == "unlock_home":
             # Picking the lock walks you in: one action, no second trip through the menu.
-            self.unlocked_homes.add(key[1])
+            # Without the skill, the timing dial decides; the score is saved with the move.
             p.ap -= 1
-            s.go(key[1])
-            s.doorstep = None
-            self._cue("La serrure cède. Vous entrez dans l'appartement.", name=p.name)
+            score = None
+            if "lockpick" not in s.skills:
+                score = replayed_score if replayed_score is not None else float(self.challenge("lockpick", LOCKPICK_DIFFICULTY))
+            if score is None or score >= PASS_MARK:
+                self.unlocked_homes.add(key[1])
+                s.go(key[1])
+                s.doorstep = None
+                self._cue("La serrure cède. Vous entrez dans l'appartement." if score is None else
+                          "Le pêne glisse au bon moment. Vous entrez dans l'appartement.", name=p.name)
+            else:
+                self._cue("Le crochet ripe, la serrure tient. Il faudra réessayer.", name=p.name)
+            if score is not None:
+                key = key + (round(score, 3),)
         elif action == "interrogate":
             self.open_questions("p" + str(key[1]))
         elif action == "service_menu":

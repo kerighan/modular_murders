@@ -1,5 +1,41 @@
 # Passation : client Godot
 
+## Jauge tournante : le crochetage pour tous — v31 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v31.apk`, versionCode 31 / `0.31-causal`, même signature.
+Idée de Maixent : les compétences servent à *sauter* un QTE que tout le monde peut tenter.
+
+- Client : `timing_dial.gd` (Control plein écran, calque 8) remplace la barre « Appuyez vite ».
+  `start(kind, difficulty)` : aiguille qui tourne (3,2 → 6 rad/s), arc cible (±0,55 → ±0,22
+  rad) tiré au hasard, départ à l'opposé de l'arc, échec automatique après deux tours.
+  `hit()` sur touche/clic/`ui_accept` : score = 1 au centre, 0,5 au bord de l'arc, 0 loin ;
+  signal `answered(score)` → `_answer_qte` → message `score`. En `--shot`, réponse parfaite.
+- Adaptateur : `CausalGame(seed, names, challenge=None)` (le runtime passe `_challenge`, qui
+  émet `challenge {kind, difficulty}` et attend `score`). `("unlock_home", home)` est offert à
+  tout le monde (libellé « · adresse » sans la compétence) ; sans `lockpick`, le score de la
+  jauge décide (`PASS_MARK` 0,5, `LOCKPICK_DIFFICULTY` 0,55) : réussite → entrée directe,
+  échec → « Le crochet ripe », 1 PA, réessai possible. Le coup est sauvegardé comme
+  `["unlock_home", home, score]` et rejoué sans jauge ; `restore(..., challenge=)`.
+  Sans client (tests, audits) la main est parfaite.
+- Test natif `tests/lockpick_dial_smoke.gd` (jauge affichée, raté ferme, réussi entre) et
+  captures `causal-lockpick-*`. Prochains usages possibles du même mécanisme : fouille
+  rapide (compétence `search`), persuasion (`rapport`).
+
+## Un trait sur la scène, un autre à la caméra — v30 (13 octobre 2026, côté backend)
+
+APK `builds/nexus-city-solo-debug-v30.apk`, versionCode 30 / `0.30-causal`, même signature.
+Retour de Maixent (seed 836) : deux témoins sur la scène donnaient deux traits, trop
+discriminant d'entrée, et la caméra répétait la couleur du manteau.
+
+- `WitnessBuilder` : parmi les témoins de l'acte décisif, seul le premier garde un trait ; les
+  suivants ne donnent que l'heure et une silhouette.
+- `build_evidence(described=…)` : la caméra de la rue de la scène évite les traits déjà décrits
+  par les témoins (et la silhouette) quand un autre trait partageable existe
+  (flux `camera-aspect-v1`). `build_case` lui passe les aspects des perceptions de l'acte.
+- Mesure sur 120 affaires : au plus un trait de témoin sur la scène (103 cas avec un, 17 sans),
+  la caméra de la scène apporte un trait nouveau dans 93 cas sur 93 où elle fonctionne ;
+  profils toujours équilibrés (45 / 33 / 42).
+
 ## Tissu social — v29 (12 octobre 2026, côté backend)
 
 APK `builds/nexus-city-solo-debug-v29.apk`, versionCode 29 / `0.29-causal`, même signature.

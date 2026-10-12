@@ -73,7 +73,8 @@ def family_lengths(case):
     innocents = case.plan.population - {author}
     sources = description_sources(case)
     covered = {key: excluded_by(case, key) & innocents for key in sources}
-    alibis = {p.person: p.basis for p in case.evidence.presences}
+    # A partial visit clears nobody; neither does merely being in the poisoning room.
+    alibis = {p.person: p.basis for p in case.evidence.presences if p.basis not in ("partial_service", "on_site")}
     registers = remembered(case)
     poison = 2 if any(basis == "continuous_noncontact" for basis in alibis.values()) else 0  # the glass, then the lab
 
@@ -230,8 +231,13 @@ def guide(session):
         if verify and verify.id not in done_ids:
             checks.append(f"Vérifier le récit de {people[pid].name} — {where(verify)}{when(verify)}")
     confirmed = sum(1 for pid in case.plan.population if session.alibi_state(pid) == "confirmed")
+    partial = sum(1 for pid in case.plan.population if session.alibi_state(pid) == "partial")
+    on_site = sum(1 for pid in case.plan.population if session.alibi_state(pid) == "on_site")
+    note = ", ".join(part for part in (f"{confirmed} alibi(s) confirmé(s)" if confirmed else "",
+                                       f"{partial} récit(s) vrai(s) mais hors période" if partial else "",
+                                       f"{on_site} personne(s) vue(s) sur les lieux" if on_site else "") if part)
     steps.append(_step("Vérifier auprès du personnel", "next" if checks else "later" if to_hear else "done", checks,
-                       note=f"{confirmed} alibi(s) confirmé(s)" if confirmed else None))
+                       note=note or None))
     threads.append({"family": "horaires", "title": "Les emplois du temps", "steps": steps})
 
     # ---- matériel: the scene, the papers, the lab, the prints

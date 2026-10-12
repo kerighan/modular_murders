@@ -44,9 +44,13 @@ class PlayCase:
     registrations: tuple
 
 
-def build_case(seed=0, *, focus_assault=0, register_memory=0.5):
+def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0.0):
     crime = CrimeBuilder(seed).build(KernelBuilder(seed, people_count=8).sample())
     life = build_life(crime, seed)
+    # A poisoning with nobody who saw the glass is only a round of alibis: someone
+    # always caught the gesture, at least as a silhouette with one trait.
+    if crime.method is Method.POISONED:
+        focus_assault = max(1, focus_assault)
     witnesses = WitnessBuilder(seed).build(crime, focus_assault=focus_assault)
     # Loose ends need a possible refutation. Ordinary grievances and romantic
     # context get corroboration where it fits the existing physical truth.
@@ -57,7 +61,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5):
     neutral = sorted(p.id for p in life.people.values() if p.id not in (
         victim, crime.kernel.roles.author, crime.kernel.roles.other))
     narrative_people.update(random.Random(f"early-progress:{seed}").sample(neutral, 2))
-    evidence = build_evidence(crime, seed, witnesses.appearances, required_alibis=narrative_people)
+    evidence = build_evidence(crime, seed, witnesses.appearances, required_alibis=narrative_people, partial_alibis=partial_alibis)
     evenings = build_evenings(crime, evidence, seed)
     registrations = build_registrations(crime)
     plan = with_witnesses(project(crime), witnesses)
@@ -209,9 +213,32 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5):
     # Existing service staff verify real observed presences, not named extras.
     for p in evidence.presences:
         name = people[p.person].name
+        if p.basis == "on_site":
+            # Seen in the room where the glass was poisoned: an opportunity, never an alibi.
+            text = (f"Oui, {name}. Je m'occupais de sa table, du service du verre jusqu'au malaise. "
+                    f"Mais dans la salle, tout le monde pouvait s'approcher du comptoir. Je ne peux pas jurer de ce que chacun a fait.")
+            add("alibi:" + p.person, "corroboration", text, p.id,
+                claim={"account": p.person, "on_site": True, "place": p.place, "source_actor": p.witness})
+            actions.append(DiscoveryAction("verify:" + p.person, Operation.VERIFY, "Vérifier le récit de " + name,
+                                           p.place, p.witness, ("alibi:" + p.person,), ("evening:" + p.person,)))
+            continue
         if p.basis == "continuous_noncontact":
+            # One guest the staff truly never lost sight of: that does clear them.
             text = f"Oui, {name}. Je m'occupais de sa table. Je n'ai pas regardé l'heure, mais du service du verre jusqu'au malaise, cette personne est restée sous mes yeux, sans toucher le verre de la victime."
             requires = ("medical_window", "drink_result")
+        elif p.basis == "partial_service":
+            times = remembered_times(p)
+            if not times:
+                raise ValueError("A partial visit still has remembered landmarks")
+            beginning, ending = spoken_time(times['start']), spoken_time(times['end'])
+            text = (f"Oui, {name}, hier. Entre {beginning} et {ending}, cette personne était à sa table. "
+                    f"{'Avant' if p.start > start else 'Après'}, je ne peux rien dire : je ne l'ai pas vue.")
+            # True, verified, and silent on part of the crime window: it clears nobody.
+            add("alibi:" + p.person, "corroboration", text, p.id,
+                claim={"account": p.person, "partial": True, "place": p.place, **times, "source_actor": p.witness})
+            actions.append(DiscoveryAction("verify:" + p.person, Operation.VERIFY, "Vérifier le récit de " + name,
+                                           p.place, p.witness, ("alibi:" + p.person,), ("evening:" + p.person,)))
+            continue
         else:
             times = remembered_times(p)
             if not times or not (times["start"] <= start and end <= times["end"]):
@@ -244,12 +271,12 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5):
         register = {}
         for p in evidence.presences:
             # At most two guests come to mind unprompted: the register narrows, it never closes the case.
-            if p.witness != keeper.id or p.person in seen or len(register) >= 2 or memory.random() < 1 - register_memory:
+            if p.witness != keeper.id or p.person in seen or p.basis == "partial_service" or len(register) >= 2 or memory.random() < 1 - register_memory:
                 continue
             times = remembered_times(p)
             when = "entre " + spoken_time(times["start"]) + " et " + spoken_time(times["end"]) if times else "pendant le service"
             texts.append(f"{people[p.person].name} était à une table que je servais {when}.")
-            if times and p.basis != "continuous_noncontact" and crime.method is not Method.POISONED:
+            if times and p.basis not in ("continuous_noncontact", "on_site") and keeper.place != crime.scene:
                 register[p.person] = {"place": p.place, **times, "requires": ("medical_window",)}
         key = "venue_register:" + keeper.place
         text = " ".join(texts) + " Pour les autres clients, mes souvenirs sont moins précis." if texts else "Je ne peux vous citer personne avec certitude pour cette soirée. Ça ne veut pas dire que personne n'est venu."
@@ -267,7 +294,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5):
         for row in statements(witnesses, w.id):
             perception = next(p for p in witnesses.perceptions if row.sources == (p.id,))
             event = next(e for e in witnesses.events if e.id == perception.event)
-            if event.kind is EventKind.ASSAULT and perception.aspect is not Aspect.SILHOUETTE:
+            if event.kind in (EventKind.ASSAULT, EventKind.DRINK_ADDITION) and perception.aspect is not Aspect.SILHOUETTE:
                 a = next(a for a in evidence.appearances if a.person == perception.actor)
                 aspect = perception.aspect.value
                 claims[row.id] = {"description": aspect, "value": getattr(a, aspect).value}
@@ -291,9 +318,9 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5):
 
 
 PROFILES = {  # which thread should be the short one: assault witnesses, keepers' unprompted memory
-    "signalement": {"focus_assault": 2, "register_memory": 0.3},
-    "horaires": {"focus_assault": 0, "register_memory": 0.5},
-    "mixte": {"focus_assault": 1, "register_memory": 0.5},
+    "signalement": {"focus_assault": 2, "register_memory": 0.3, "partial_alibis": 0.45},
+    "horaires": {"focus_assault": 0, "register_memory": 0.5, "partial_alibis": 0.25},
+    "mixte": {"focus_assault": 1, "register_memory": 0.5, "partial_alibis": 0.4},
 }
 
 
@@ -362,7 +389,8 @@ DIFFICULTY = {"facile": 3.0, "normal": 2.2, "difficile": 1.6, "libre": None}  # 
 
 
 class PlaySession:
-    def __init__(self, case, skills=("search", "rapport"), *, strict=True, difficulty="normal", turn_minutes=None):
+    def __init__(self, case, skills=("search", "rapport"), *, strict=True, difficulty="normal", turn_minutes=None,
+                 greeting_reveals_evening=True):
         """`strict` keeps the original adjudication: an accusation is refused until the
         file is complete. Otherwise the detective accuses at their own risk, against
         the clock: a wrong accusation costs time and clears the accused.
@@ -376,6 +404,9 @@ class PlaySession:
         self.state, self.at, self.place = DiscoveryState(), 1440 + 8 * 60, case.crime.scene
         self.strict, self.cleared, self.mistakes = strict, set(), 0
         self.deadline, self.turn_minutes = None, turn_minutes
+        # The CLI's greeting covers the look and the evening in one go; a client with an
+        # explicit "Où étiez-vous hier soir ?" question keeps the evening for that question.
+        self.greeting_reveals_evening = greeting_reveals_evening
         if not strict and DIFFICULTY[difficulty] is not None:
             from scenario_threads import deadline_minutes
             self.deadline = self.at + deadline_minutes(case, DIFFICULTY[difficulty])
@@ -432,9 +463,14 @@ class PlaySession:
         if getattr(self, "_plan_cache_key", None) == key:
             return self._plan_cache
         self._plan_cache_key = key
-        self._plan_cache = replace(self.case.plan, actions=tuple(
-            replace(a, place=self.person_place(a.actor)) if a.actor in self.person_places
-            and a.operation is Operation.INTERVIEW else a for a in self.case.plan.actions))
+        actions = []
+        for a in self.case.plan.actions:
+            if a.actor in self.person_places and a.operation is Operation.INTERVIEW:
+                a = replace(a, place=self.person_place(a.actor))
+            if a.id.startswith("meet:") and not self.greeting_reveals_evening:
+                a = replace(a, reveals=tuple(k for k in a.reveals if not k.startswith("evening:")))
+            actions.append(a)
+        self._plan_cache = replace(self.case.plan, actions=tuple(actions))
         return self._plan_cache
 
     @property
@@ -522,6 +558,10 @@ class PlaySession:
         known = dict(self.state.known)
         key = "alibi:" + pid
         if key in known:
+            if self.case.claims[key].get("partial"):
+                return "partial"  # true and verified, but silent on part of the crime window
+            if self.case.claims[key].get("on_site"):
+                return "on_site"  # seen in the room where the poisoning happened
             return "confirmed" if set(self.case.claims[key].get("requires", ())) <= known.keys() else "corroborated"
         if self.register_entries(pid):
             return "confirmed"
@@ -842,7 +882,7 @@ class PlaySession:
             details = list(dict.fromkeys(concerns[pid]))
             reasons = deductions[pid]
             verification = next((a for a in self.case.plan.actions if a.id == "verify:" + pid), None)
-            corroborated = "alibi:" + pid in known
+            corroborated = "alibi:" + pid in known and not any(self.case.claims["alibi:" + pid].get(k) for k in ("partial", "on_site"))
             state = "refuted" if reasons else "awaiting_time" if corroborated else "open"
             # A destination is not privileged knowledge: require a personal
             # story naming the witness before displaying its meeting point.
@@ -865,7 +905,7 @@ class PlaySession:
 
     def ask_context(self, person, topic):
         """Already-authored personal facts, not an invented murder testimony."""
-        if topic not in ("relation", "work", "habits", "messages", "evening", "motive", "appointment"):
+        if topic not in ("relation", "work", "circle", "habits", "messages", "evening", "motive", "appointment"):
             raise ValueError("Unknown context topic")
         if person not in self.case.plan.population or self.person_place(person) != self.place:
             raise ValueError("Il faut rejoindre cette personne pour lui parler.")
@@ -1035,9 +1075,9 @@ def main(argv=None):
                     print("Pas de nouvelle action disponible maintenant.")
                 pending = [a for a in case.plan.actions if a.place == session.place and a.operation is not Operation.CAMERA
                            and a.id not in session.state.completed and set(a.requires) <= dict(session.state.known).keys()
-                           and (ready := case.plan.next_time(a, session.state, after=session.at)) is not None and ready > session.at]
+                           and (ready := session.effective_plan.next_time(a, session.state, after=session.at)) is not None and ready > session.at]
                 for a in pending:
-                    print(f"En attente : {a.label}, disponible à {clock(case.plan.next_time(a, session.state, after=session.at))}.")
+                    print(f"En attente : {a.label}, disponible à {clock(session.effective_plan.next_time(a, session.state, after=session.at))}.")
                 if any(cam.place == session.place for cam in case.evidence.cameras):
                     print("Caméra locale : camera HEURE (hier). Poubelle fouillable ci-dessus.")
             elif cmd == "faire":
@@ -1098,7 +1138,7 @@ def main(argv=None):
                     raise ValueError("question NOM mobile|témoin|alibi|lien|métier|rdv")
                 pid = next((p.id for p in people.values() if p.name.casefold() == rest[0].casefold()), None)
                 topic = {"mobile": "motive", "témoin": "observations", "temoin": "observations",
-                         "alibi": "evening", "lien": "relation", "métier": "work", "metier": "work", "rdv": "appointment"}.get(rest[1].casefold())
+                         "alibi": "evening", "lien": "relation", "métier": "work", "metier": "work", "entourage": "circle", "rdv": "appointment"}.get(rest[1].casefold())
                 if not pid or not topic:
                     raise ValueError("Personne ou sujet inconnu")
                 if topic in ("observations", "evening"):

@@ -772,16 +772,13 @@ func _draw_actions(street: String) -> void:
 			if route["cost"] == 0 or dest == street or view["places"][dest]["street"] != null:
 				continue
 			var cost: int = route["cost"]
-			var available: bool = route["available"]
-			var reason: String = route["reason"]
-			if reason == "too_far" or cost > int(view["ap"]):
-				continue
-			if not available:
-				continue
-			var callback := _play_option.bind(route["key"].duplicate(true))
+			var reachable: bool = route["available"] and route["reason"] != "too_far" and cost <= int(view["ap"])
 			var locations := _district_locations(dest)
-			navigation.add_district(nodes[dest].position + Vector3(0, 1.8, 0), _district_title(dest), locations, cost, callback, dest, true, _presence(str(dest), true), _is_crime_region(str(dest)))
-			district_choices.append({"label": _district_title(dest), "hint": "%d PA · %s" % [cost, view["places"][dest]["label"]], "presence": _presence(str(dest), true), "callback": callback})
+			# Out of reach this turn: the sign stays, faded, so the city keeps its shape.
+			var callback := _play_option.bind(route["key"].duplicate(true)) if reachable else Callable()
+			navigation.add_district(nodes[dest].position + Vector3(0, 1.8, 0), _district_title(dest), locations, cost, callback, dest, reachable, _presence(str(dest), true), _is_crime_region(str(dest)))
+			if reachable:
+				district_choices.append({"label": _district_title(dest), "hint": "%d PA · %s" % [cost, view["places"][dest]["label"]], "presence": _presence(str(dest), true), "callback": callback})
 	end_button.disabled = end_key.is_empty()
 	end_button.set_meta("key", end_key)
 	var end_style: StyleBoxFlat = interface_theme.get_stylebox("normal", "Button").duplicate()
@@ -937,8 +934,8 @@ func _play_local(key: Array) -> void:
 		_confirm_accusation(key)
 		return
 	accuse_key.clear()
-	if key[0] == "move" and view.places.get(str(key[1]), {}).get("street") != null:
-		enter_requested = str(key[1])
+	if key[0] in ["move", "unlock_home"] and view.places.get(str(key[1]), {}).get("street") != null:
+		enter_requested = str(key[1])  # lockpicking walks straight in
 	if (key[0] == "interrogate" or key[0] == "ring" and typeof(key[1]) != TYPE_STRING) and not dialogue.visible:
 		var person := {"id": int(key[1]), "name": null, "look": ""}
 		for candidate in view["present"]:
@@ -1770,7 +1767,7 @@ func _draw_notebook() -> void:
 		name_label.add_theme_color_override("font_color", Color("edd2a7") if identified else Color("79929e"))
 		identity_box.add_child(name_label)
 		var status := Label.new()
-		status.text = "ALIBI CONFIRMÉ" if row.alibi == "confirmé" else "RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "FAITS INCOMPATIBLES" if not row.get("deductions", []).is_empty() else "À VÉRIFIER" if row.alibi == "à vérifier" else "NOM CITÉ" if identified and not row.get("profile_known", true) else "PISTE OUVERTE" if identified else "À IDENTIFIER"
+		status.text = "ALIBI CONFIRMÉ" if row.alibi == "confirmé" else "RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "VRAI · HORS PÉRIODE" if row.alibi == "hors période" else "VU SUR LES LIEUX" if row.alibi == "sur place" else "FAITS INCOMPATIBLES" if not row.get("deductions", []).is_empty() else "À VÉRIFIER" if row.alibi == "à vérifier" else "NOM CITÉ" if identified and not row.get("profile_known", true) else "PISTE OUVERTE" if identified else "À IDENTIFIER"
 		status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		status.add_theme_font_size_override("font_size", 11)
@@ -1875,7 +1872,7 @@ func _draw_notebook() -> void:
 				link_text += "\nSelon %s : %s" % [", ".join(relationship.witnesses), relationship.reported]
 			_notebook_text(body, "LIEN CONTESTÉ · À CONFRONTER" if relationship.contradiction else "LIEN AVEC LA VICTIME · SOURCES", link_text, Color("e4b27b"))
 		if row.claim != null:
-			var evening_title := "ALIBI · CONFIRMÉ" if row.alibi == "confirmé" else "SOIRÉE · RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "SOIRÉE · RÉCIT À VÉRIFIER"
+			var evening_title := "ALIBI · CONFIRMÉ" if row.alibi == "confirmé" else "SOIRÉE · RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "SOIRÉE · VRAI MAIS HORS PÉRIODE" if row.alibi == "hors période" else "SOIRÉE · VU SUR LES LIEUX" if row.alibi == "sur place" else "SOIRÉE · RÉCIT À VÉRIFIER"
 			_notebook_text(body, evening_title, str(row.claim) + (" avec " + ", ".join(row["with"]) if not row["with"].is_empty() else ""), Color("b1c4ce"))
 		if row.get("corroboration") != null:
 			_notebook_text(body, "SOURCE INDÉPENDANTE · PROPOS RECUEILLIS", str(row.corroboration), Color("83e5b3"))
@@ -2150,7 +2147,7 @@ func _draw_notebook_leads() -> void:
 		var body := VBoxContainer.new()
 		body.add_theme_constant_override("separation", 8)
 		card.add_child(body)
-		var lead_status := "HYPOTHÈSE INFIRMÉE · " if item.get("state", "") == "refuted" else "RÉCIT CORROBORÉ · " if item.get("state", "") == "corroborated" else "ALIBI CONFIRMÉ · " if item.get("state", "") == "confirmed" and str(item.id).begins_with("evening:") else "À RECOUPER · " if item.get("state", "") == "awaiting_time" else "SOURCE RECUEILLIE · " if item.complete else "À EXPLORER · "
+		var lead_status := "HYPOTHÈSE INFIRMÉE · " if item.get("state", "") == "refuted" else "RÉCIT CORROBORÉ · " if item.get("state", "") == "corroborated" else "VRAI MAIS HORS PÉRIODE · " if item.get("state", "") == "partial" else "VU SUR LES LIEUX · " if item.get("state", "") == "on_site" else "ALIBI CONFIRMÉ · " if item.get("state", "") == "confirmed" and str(item.id).begins_with("evening:") else "À RECOUPER · " if item.get("state", "") == "awaiting_time" else "SOURCE RECUEILLIE · " if item.complete else "À EXPLORER · "
 		var lead_text := str(item.reason)
 		if not str(item.objective).is_empty():
 			lead_text += "\n\n" + str(item.objective)

@@ -188,7 +188,22 @@ class Life:
                    "video_technician": "Je fais la maintenance des caméras", "video_management": "Je dirige la Régie",
                    "accounting": "Je tiens la comptabilité", "cooking": "Je travaille en cuisine",
                    "restaurant_management": "Je gère le restaurant"}[p.occupation.value]
-            return job + ", " + where + "."
+            # Naming the people one works with: a lead for whoever suspects the workplace.
+            colleagues = sorted(self.people[other].name for b in self.bonds if b.kind is Link.COLLEAGUES and person in b.people
+                                for other in b.people if other != person)
+            if not colleagues:
+                return job + ", " + where + "."
+            named = colleagues[0] if len(colleagues) == 1 else ", ".join(colleagues[:-1]) + " et " + colleagues[-1]
+            return job + ", " + where + ", avec " + named + "."
+        if topic == "circle":
+            # Who the victim kept company with, as far as this person knows: names to follow up,
+            # never somebody else's private history.
+            close = sorted(self.people[other].name for other in self.people if other not in (person, v.id)
+                           and self.knows(person, other) and self.links(other, v.id))
+            if not close:
+                return f"Je ne saurais pas dire qui {v.name} fréquentait."
+            named = close[0] if len(close) == 1 else ", ".join(close[:-1]) + " et " + close[-1]
+            return f"Les gens que je savais proches de {v.name} : {named}."
         if topic == "habits":
             return {"Aime marcher le long du canal après le travail.": "Après le travail, j'aime marcher le long du canal. Ça me permet de souffler.",
                     "Collectionne les vieux disques.": "Je collectionne les vieux disques. J'aime bien fouiller les bacs pour trouver quelque chose que je ne connais pas.",
@@ -231,6 +246,32 @@ class Life:
             return self.answer(person)
         bonds = self.links(person, other)
         name = self.people[other].name
+        rivalry = next((f for f in self.ordinary if f.kind == "ex_and_partner" and set(f.people) == {person, other}), None)
+        if rivalry:
+            victim = self.people[self.crime.kernel.roles.victim].name
+            asking_ex = rivalry.people[0] == person
+            feminine = name not in ("Oscar", "Marius", "Bruno", "Farid", "Karim")
+            if asking_ex:  # the ex, about the one who came next
+                return name + " ? " + {
+                    "venom": ("Celle" if feminine else "Celui") + f" qui a pris la suite. On s'est croisés, sans plus. Je ne vais pas faire semblant d'avoir apprécié.",
+                    "grace": f"Je savais qu'ils étaient ensemble. {victim} avait l'air heureux. Tant mieux, sincèrement.",
+                    "neutral": f"On se connaît de vue, par {victim}. Je n'ai rien de particulier à en dire.",
+                }[rivalry.detail]
+            return name + " ? " + {  # the partner, about the ex
+                "venom": f"L'ex de {victim}. On s'est croisés deux ou trois fois. Jamais chaleureux.",
+                "grace": f"L'ex de {victim}. C'était fini depuis longtemps ; il n'y avait pas de gêne entre nous.",
+                "neutral": f"L'ex de {victim}. On se connaît de vue, c'est tout.",
+            }[rivalry.detail]
+        breakup = next((f for f in self.ordinary if f.kind == "sour_breakup" and set(f.people) == {person, other}), None)
+        if breakup:
+            victim = self.people[self.crime.kernel.roles.victim]
+            moved_on = person if self.links(person, victim.id) and any(b.kind is Link.PARTNERS for b in self.links(person, victim.id)) else other
+            feminine = name not in ("Oscar", "Marius", "Bruno", "Farid", "Karim")
+            if moved_on == person:  # the one who left, about the ex who did not accept it
+                return name + " ? " + ("Mon ex. Ça s'est mal fini : " + ("elle" if feminine else "il") + " n'acceptait pas que je passe à autre chose."
+                                       if breakup.detail == "venom" else "Mon ex. C'est terminé, et je préfère ne pas m'étendre.")
+            return name + " ? " + (f"On a été ensemble. {name} est passé{'e' if feminine else ''} à autre chose, avec {victim.name}. Je ne vais pas prétendre que ça m'a fait plaisir."
+                                   if breakup.detail == "venom" else f"On a été ensemble. C'est fini ; {name} a refait sa vie. Voilà.")
         phrases = {
             Link.SIBLINGS: "Nous sommes de la même fratrie.", Link.FRIENDS: "On est amis.",
             Link.NEIGHBORS: "On habite dans la même rue.", Link.COLLEAGUES: "On travaille ensemble.",
@@ -350,20 +391,35 @@ def build_life(crime, seed=0):
     for r in world.relationships:
         kind = Link.EXES if r.kind is RelationKind.ROMANTIC and not r.active_at(0) else kinds[r.kind]
         bonds.append(SocialBond("bond:" + r.id, r.people, kind, r.id, r.since))
-    # Fill independently of criminal role. Absence of a relationship is valid.
+    # The social fabric does not run through the victim: colleagues always know
+    # each other, and most people know who lives on their street.
+    fabric = random.Random(f"social-fabric-v1:{seed}")
+    ids = sorted(people)
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            pa, pb = people[a], people[b]
+            if pa.workplace == pb.workplace and not any(x.kind is Link.COLLEAGUES and set(x.people) == {a, b} for x in bonds):
+                fact = OrdinaryFact(f"workplace:{a}:{b}", (a, b), "shared_workplace",
+                                    -fabric.randrange(120, 1500) * 1440, "Même employeur.")
+                ordinary.append(fact)
+                bonds.append(SocialBond("bond:" + fact.id, fact.people, Link.COLLEAGUES, fact.id, fact.minute))
+            same_street = pa.home != pb.home and crime.streets.neighbors(pa.home)[0][0] == crime.streets.neighbors(pb.home)[0][0]
+            if same_street and fabric.random() < .6 and not any(x.kind is Link.NEIGHBORS and set(x.people) == {a, b} for x in bonds):
+                fact = OrdinaryFact(f"street:{a}:{b}", (a, b), "same_street",
+                                    -fabric.randrange(120, 1500) * 1440, "Même rue.")
+                ordinary.append(fact)
+                bonds.append(SocialBond("bond:" + fact.id, fact.people, Link.NEIGHBORS, fact.id, fact.minute))
+    # A few more direct ties to the victim, independently of criminal role.
+    # Most people are not her friends: absence of a relationship is the norm.
     for p in world.people:
         if p.id == roles.victim or any(set(b.people) == {p.id, roles.victim} for b in bonds):
             continue
-        options = [None, Link.FRIENDS, Link.SIBLINGS]
+        options = [None] * 6 + [Link.FRIENDS, Link.ACQUAINTANCES, Link.SIBLINGS]
         v = people[roles.victim]
         family = {v.id} | {other for b in bonds if b.kind is Link.SIBLINGS and v.id in b.people for other in b.people}
         if any(b.kind in (Link.PARTNERS, Link.EXES) and p.id in b.people
                and any(other in family for other in b.people if other != p.id) for b in bonds):
             options.remove(Link.SIBLINGS)
-        if p.workplace == v.workplace:
-            options.append(Link.COLLEAGUES)
-        if p.home != v.home and crime.streets.neighbors(p.home)[0][0] == crime.streets.neighbors(v.home)[0][0]:
-            options.append(Link.NEIGHBORS)
         kind = rng.choice(options)
         if kind is not None:
             fact = OrdinaryFact("family_or_contact:" + p.id, (p.id, v.id), "social_history",
@@ -454,4 +510,36 @@ def build_life(crime, seed=0):
             if not any(set(b.people) == set(fact.people) for b in bonds):
                 bonds.append(SocialBond("bond:" + fact.id, fact.people, Link.ACQUAINTANCES,
                                         fact.id, fact.minute))
+    # An ex usually knows who came next, and has an opinion about it: venom or
+    # grace, drawn regardless of guilt. Both sides remember the encounter.
+    rivalry = random.Random(f"ex-and-partner-v1:{seed}")
+    for former in [b for b in bonds if b.kind is Link.EXES and roles.victim in b.people]:
+        ex = next(p for p in former.people if p != roles.victim)
+        for couple in partners:
+            partner = next(p for p in couple.people if p != roles.victim)
+            since = max(former.since, couple.since)
+            if partner == ex or since >= -1 or rivalry.random() >= .8:
+                continue
+            # A triangle that went sour (the story's own romantic events, innocent or not)
+            # tilts the tone toward venom; otherwise grace is the norm.
+            sour = any(e.kind in (EventKind.SEPARATION_ANNOUNCED, EventKind.RECONCILIATION_REFUSED,
+                                  EventKind.RELATIONSHIP_DISCLOSED, EventKind.REFUSAL_EXPRESSED, EventKind.DEMAND_MADE)
+                       and {ex, roles.victim} <= {e.actor, e.target} for e in world.events)
+            tone = rivalry.choice(("venom", "venom", "venom", "neutral", "grace") if sour else ("grace", "grace", "grace", "neutral", "venom"))
+            fact = OrdinaryFact(f"rivalry:{ex}:{partner}", (ex, partner), "ex_and_partner",
+                                rivalry.randrange(since + 1, 0), tone)
+            ordinary.append(fact)
+            if not any(set(b.people) == {ex, partner} for b in bonds):
+                bonds.append(SocialBond("bond:" + fact.id, fact.people, Link.ACQUAINTANCES, fact.id, fact.minute))
+    # A couple that broke up inside the story's own romantic events (one of them
+    # moved on, a reconciliation was refused): the breakup stays sour for both,
+    # in words only. Tone is drawn, never the role.
+    sour_kinds = (EventKind.SEPARATION_ANNOUNCED, EventKind.RECONCILIATION_REFUSED,
+                  EventKind.RELATIONSHIP_DISCLOSED, EventKind.REFUSAL_EXPRESSED, EventKind.DEMAND_MADE)
+    for former in [b for b in bonds if b.kind is Link.EXES and roles.victim not in b.people]:
+        x, y = former.people
+        if any(e.kind in sour_kinds and {x, y} <= {e.actor, e.target} for e in world.events):
+            fact = OrdinaryFact(f"breakup:{x}:{y}", (x, y), "sour_breakup",
+                                former.since + 1 if former.since < -1 else -1440, rivalry.choice(("venom", "venom", "neutral")))
+            ordinary.append(fact)
     return Life(crime, tuple(bonds), tuple(ordinary), tuple(messages), habits)

@@ -151,7 +151,8 @@ def c_has_concern(case, pid):
 def test_every_sampled_innocent_narrative_hook_can_be_refuted(seed):
     case = sample_playable(seed)
     assert context_is_refutable(case)
-    assert all(p.person != case.crime.kernel.roles.author for p in case.evidence.presences)
+    # The author may have a true partial visit, never a presence covering the act.
+    assert all(p.person != case.crime.kernel.roles.author or p.basis in ("partial_service", "on_site") for p in case.evidence.presences)
 
 
 @pytest.mark.parametrize("seed", range(20))
@@ -464,6 +465,9 @@ def test_poison_corroboration_does_not_invent_a_contact_observation_elsewhere():
             assert spoken_time(times["start"]) in text and spoken_time(times["end"]) in text
             row = next(r for r in s.timeline() if r.get("person") == p.person)
             assert row["text"] == text
+        elif p.basis == "on_site":  # seen in the room: no clock, no clearing
+            assert "tout le monde pouvait s'approcher du comptoir" in text
+            assert not any(r.get("person") == p.person for r in s.timeline())
         else:
             assert "Je n'ai pas regardé l'heure" in text and "service du verre jusqu'au malaise" in text
             assert not any(r.get("person") == p.person for r in s.timeline())
@@ -478,8 +482,11 @@ def test_poison_corroboration_does_not_invent_a_contact_observation_elsewhere():
     s.place = "lab"
     s.do("analyze_drink")
     for p in case.evidence.presences:
-        deduction = s.deductions()[p.person][0]["text"]
-        assert ("ailleurs" in deduction) == (p.place != case.crime.scene)
+        rows = s.deductions()[p.person]
+        if p.basis in ("on_site", "partial_service"):  # seen there, or beside the window: clears nobody
+            assert not rows and p.person in s.remaining()
+            continue
+        assert ("ailleurs" in rows[0]["text"]) == (p.place != case.crime.scene)
 
 
 def test_barman_memory_rounds_inward_and_never_leaks_private_minutes(cases):
@@ -491,8 +498,11 @@ def test_barman_memory_rounds_inward_and_never_leaks_private_minutes(cases):
                 claim = case.claims[key]
                 text = next(a.text for a in case.plan.artifacts if a.id == key)
                 assert ":" not in text
-                if p.basis == "continuous_noncontact":
+                if p.basis in ("continuous_noncontact", "on_site"):
                     assert "start" not in claim and "end" not in claim
+                    continue
+                if p.basis == "partial_service":  # a true visit beside the window: never certified as covering it
+                    assert "excludes" not in claim and claim["start"] % 15 == claim["end"] % 15 == 0
                     continue
                 assert p.start <= claim["start"] <= window_start
                 assert window_end <= claim["end"] <= p.end

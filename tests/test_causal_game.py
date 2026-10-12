@@ -56,7 +56,9 @@ def travel(game, target):
                 game.play(("end",))
             if game.occupants(target):
                 return travel(game, target)
-            game.play(("unlock_home", target))
+            game.play(("unlock_home", target))  # picking the lock walks in
+            if game.session.place == target:
+                return
     while game.cost(target) > game.player.ap:
         game.play(("end",))
     if target in game.homes and game.occupants(target):
@@ -243,7 +245,7 @@ def test_service_menu_without_request_explains_why_without_empty_greeting(place,
     assert ("ask", "service_status") in game.options()
     game.play(("ask", "service_status"))
     assert "examiner le corps" in game.cue["text"] if place == "morgue" else "aucun résultat" in game.cue["text"]
-    restored = CausalGame.restore(7, "Ada", game.snapshot(), True)
+    restored = CausalGame.restore(game.seed, "Ada", game.snapshot(), True)
     assert restored.view(restored.player) == game.view(game.player)
 
 
@@ -265,7 +267,7 @@ def test_server_only_reveals_stock_after_a_question():
 
 
 def test_fixture_actions_are_physical_and_remain_at_zero_ap():
-    game = fresh()
+    game = seed_where(lambda g: g.case.crime.scene in g.outdoors and any(c.place == g.case.crime.scene and c.online for c in g.case.evidence.cameras))  # a street crime with a live camera
     view = game.view(game.player)
     assert any(f["prop"] == "body" for f in view["fixtures"])
     assert any(f["prop"] == "trash" for f in view["fixtures"])
@@ -279,7 +281,7 @@ def test_fixture_actions_are_physical_and_remain_at_zero_ap():
 
 
 def test_camera_requires_scene_and_offers_only_four_direct_windows():
-    game = fresh()
+    game = seed_where(lambda g: g.case.crime.scene in g.outdoors and any(c.place == g.case.crime.scene and c.online for c in g.case.evidence.cameras))  # a street crime with a live camera
     assert ("camera_menu",) not in game.options()
     discover(game, "inspect_scene")
     source = game.player.place
@@ -306,7 +308,7 @@ def test_camera_requires_scene_and_offers_only_four_direct_windows():
 
 
 def test_searched_bin_keeps_its_mesh_without_an_interaction():
-    game = fresh()
+    game = seed_where(lambda g: g.case.crime.scene in g.outdoors and any(c.place == g.case.crime.scene and c.online for c in g.case.evidence.cameras))  # a street crime with a live camera
     before = game.view(game.player)
     bin_before = next(f for f in before["fixtures"] if f["prop"] == "trash")
     assert bin_before["selectable"] and bin_before["actions"]
@@ -413,14 +415,14 @@ def test_video_reader_exists_only_at_the_control_room(place):
 
 
 def test_pending_central_reader_replays_exactly():
-    game = fresh()
+    game = seed_where(lambda g: g.case.crime.scene in g.outdoors and any(c.place == g.case.crime.scene and c.online for c in g.case.evidence.cameras))  # a street crime with a live camera
     source = game.player.place
     discover(game, "inspect_scene")
     travel(game, "cctv")
     game.play(("camera_menu",))
     game.play(("ask", "camera_district", source))
     game.play(("ask", "camera_window", 18))
-    restored = CausalGame.restore(7, "Ada", game.snapshot(), True)
+    restored = CausalGame.restore(game.seed, "Ada", game.snapshot(), True)
     assert restored.view(restored.player) == game.view(game.player)
 
 
@@ -439,7 +441,7 @@ def test_broad_window_reuses_old_hour_recordings_without_false_empty_answer():
 
 
 def test_v14_street_camera_history_is_preserved_and_pending_reader_closed():
-    game = fresh()
+    game = seed_where(lambda g: g.case.crime.scene in g.outdoors and any(c.place == g.case.crime.scene and c.online for c in g.case.evidence.cameras))  # a street crime with a live camera
     discover(game, "inspect_scene")
     game._legacy_camera_replay = True
     game.play(("camera_menu",))
@@ -448,7 +450,7 @@ def test_v14_street_camera_history_is_preserved_and_pending_reader_closed():
     game.play(("ask", "camera_block", 18))
     game.play(("ask", "camera_hour", 18))
     game._legacy_camera_controls = False
-    restored = CausalGame.restore(7, "Ada", game.snapshot(), True)
+    restored = CausalGame.restore(game.seed, "Ada", game.snapshot(), True)
     assert restored.session.journal == game.session.journal
     assert restored.player.ap == game.player.ap
     assert restored.session.at == game.session.at
@@ -456,7 +458,7 @@ def test_v14_street_camera_history_is_preserved_and_pending_reader_closed():
     assert restored.speaker is None and restored.cue is None
     assert ("camera_menu",) not in restored.options()
     travel(restored, "cctv")
-    again = CausalGame.restore(7, "Ada", restored.snapshot(), True)
+    again = CausalGame.restore(game.seed, "Ada", restored.snapshot(), True)
     assert again.view(again.player) == restored.view(restored.player)
 
 
@@ -470,7 +472,7 @@ def test_every_suspect_has_the_same_menu_and_question_costs(seed):
         game.play(("end",))
         approach(game, pid)
         current = {k: label for k, label in game.options().items() if k[0] == "ask"}
-        assert set(k[1] for k in current) == {"relation", "work", "habits", "motive", "observations", "evening"}
+        assert set(k[1] for k in current) == {"relation", "work", "circle", "motive", "observations", "evening"}
         assert list(current)[:4] == [("ask", topic) for topic in ("relation", "evening", "observations", "motive")]
         assert ("ask", "messages") not in game.options()
         if menu is None:
@@ -517,7 +519,7 @@ def test_former_empty_service_question_replays_but_is_never_available_live():
     game.play(("service_menu", "staff:bar"))
     saved = game.snapshot()
     saved["history"] = saved["history"] + [["ask", "service_status"]]
-    restored = CausalGame.restore(7, "Ada", saved, True)
+    restored = CausalGame.restore(game.seed, "Ada", saved, True)
     assert restored.snapshot() == saved
     assert restored.cue["question"] == "Vous avez quelque chose à ajouter ?"
     assert ("ask", "service_status") not in restored.options()
@@ -525,11 +527,11 @@ def test_former_empty_service_question_replays_but_is_never_available_live():
         restored.play(("ask", "service_status"))
 
 
-@pytest.mark.parametrize("topic", ("relation", "work", "habits", "evening", "motive", "observations"))
+@pytest.mark.parametrize("topic", ("relation", "work", "circle", "evening", "motive", "observations"))
 def test_all_suspect_questions_cost_one_pa_once_and_repeat_free_at_zero(topic):
     game = fresh()
     discover(game, "inspect_scene")
-    approach(game, "p1")
+    approach(game, sorted(game.case.plan.population)[0])
     game.player.ap = 1
     key = ("ask", topic)
     assert game.question_cost(key) == 1
@@ -541,7 +543,7 @@ def test_all_suspect_questions_cost_one_pa_once_and_repeat_free_at_zero(topic):
         game.play(key)
         assert game.cue["text"] == first and game.player.ap == 0
         assert (game.session.at, game.session.journal, game.tick) == before
-    disabled = next(("ask", t) for t in ("relation", "work", "habits") if t != topic)
+    disabled = next(("ask", t) for t in ("relation", "work", "circle") if t != topic)
     assert disabled not in game.options()
     presentation = {tuple(row[0]): row[2] for row in game.view(game.player)["dialogue_options"]}
     assert presentation[key] == {"cost": 0, "available": True}
@@ -554,19 +556,20 @@ def test_all_suspect_questions_cost_one_pa_once_and_repeat_free_at_zero(topic):
 def test_questions_about_each_other_person_are_individually_paid_and_repeatable():
     game = fresh()
     discover(game, "inspect_scene")
-    approach(game, "p1")
-    key = ("talk_about", 1, 2)
+    a, b, c = sorted(int(pid[1:]) for pid in game.case.plan.population)[:3]
+    approach(game, "p%d" % a)
+    key = ("talk_about", a, b)
     game.player.ap = 1
     game.play(key)
     assert game.player.ap == 0
     first, at, journal = game.cue["text"], game.session.at, list(game.session.journal)
     game.play(key)
     assert (game.cue["text"], game.session.at, game.session.journal) == (first, at, journal)
-    assert ("talk_about", 1, 3) not in game.options()
+    assert ("talk_about", a, c) not in game.options()
     game.play(("stop",))
     # Already met suspect: reopening itself gives no new information or cost.
-    home = game.session.person_places["p1"]
-    game.play(("ring", home) if home in game.homes else ("interrogate", 1))
+    home = game.session.person_places["p%d" % a]
+    game.play(("ring", home) if home in game.homes else ("interrogate", a))
     assert game.player.ap == 0 and key in game.options()
 
 
@@ -576,7 +579,7 @@ def test_service_answers_are_repeatable_free_without_duplicate_notes_or_analysis
     travel(game, "police")
     game.play(("service_menu", "staff:police"))
     game.player.ap = 1
-    key = ("ask", "service_action", "record:p1")
+    key = ("ask", "service_action", "record:" + sorted(game.case.plan.population)[0])
     game.play(key)
     first, at, journal = game.cue["text"], game.session.at, list(game.session.journal)
     assert game.player.ap == 0
@@ -591,14 +594,14 @@ def test_service_answers_are_repeatable_free_without_duplicate_notes_or_analysis
 def test_legacy_free_biography_history_keeps_old_pa_then_new_questions_are_paid():
     game = fresh()
     discover(game, "inspect_scene")
-    approach(game, "p1")
+    approach(game, sorted(game.case.plan.population)[0])
     before = game.player.ap
     game._legacy_question_replay = True
     game.play(("ask", "relation"))
     game._legacy_question_replay = False
     saved = game.snapshot()
     saved.pop("priced_from")
-    restored = CausalGame.restore(7, "Ada", saved, True)
+    restored = CausalGame.restore(game.seed, "Ada", saved, True)
     assert restored.player.ap == before
     assert restored.session.journal == game.session.journal
     assert restored.priced_from == len(saved["history"])
@@ -606,7 +609,7 @@ def test_legacy_free_biography_history_keeps_old_pa_then_new_questions_are_paid(
     assert restored.player.ap == before - 1
     restored.play(("ask", "work"))
     assert restored.player.ap == before - 1
-    again = CausalGame.restore(7, "Ada", restored.snapshot(), True)
+    again = CausalGame.restore(game.seed, "Ada", restored.snapshot(), True)
     assert again.view(again.player) == restored.view(restored.player)
 
 
@@ -642,7 +645,7 @@ def test_evening_account_opens_a_public_witness_lead_without_self_certifying_an_
     awaiting = next(r for r in game.view(game.player)["leads"] if r["id"] == "evening:" + pid)
     assert awaiting["complete"] and awaiting["state"] == "corroborated" and "rapport médical" in awaiting["reason"]
     assert next(r for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:]))["alibi"] == "corroboré"
-    restored = CausalGame.restore(7, "Ada", game.snapshot(), True)
+    restored = CausalGame.restore(game.seed, "Ada", game.snapshot(), True)
     assert restored.view(restored.player) == game.view(game.player)
 
 
@@ -736,7 +739,7 @@ def test_police_records_reveal_real_appearance_not_a_guilt_filter():
     note = next(n for n in game.view(game.player)["notebook"] if n["id"] == int(pid[1:]))
     assert note["traits"]["Cheveux"] == appearance.hair.value
     assert note["appearance"]["hair"] == appearance.hair.value
-    restored = CausalGame.restore(7, "Ada", game.snapshot(), True)
+    restored = CausalGame.restore(game.seed, "Ada", game.snapshot(), True)
     assert restored.view(restored.player) == game.view(game.player)
 
 
@@ -745,7 +748,7 @@ def test_contextual_answers_use_existing_facts_and_do_not_exclude_anyone():
     pid = next(iter(sorted(game.case.plan.population)))
     approach(game, pid)
     remaining = game.session.remaining()
-    for topic in ("work", "habits"):
+    for topic in ("work", "circle"):
         game.play(("ask", topic))
         assert game.case.life.answer(pid, topic) in game.cue["text"]
         assert game.session.remaining() == remaining
@@ -775,7 +778,7 @@ def test_replay_restores_exact_public_view_and_pending_dialogue():
     game = fresh()
     discover(game, "inspect_scene")
     approach(game, sorted(game.case.plan.population)[0])
-    restored = CausalGame.restore(7, "Ada", json.loads(json.dumps(game.snapshot())), True)
+    restored = CausalGame.restore(game.seed, "Ada", json.loads(json.dumps(game.snapshot())), True)
     assert restored.view(restored.player) == game.view(game.player)
 
 
@@ -810,11 +813,9 @@ def test_lockpick_only_opens_an_empty_private_home_and_costs_a_skill_slot():
     before = game.player.ap
     assert ("move", home) not in game.options()
     game.play(("unlock_home", home))
-    assert game.player.ap == before - 1 and game.session.place != home
-    assert ("move", home) in game.options()
-    game.play(("move", home))
+    assert game.player.ap == before - 1 and game.session.place == home  # one action, you are inside
     assert not game.view(game.player)["present"]
-    restored = CausalGame.restore(7, "Ada", game.snapshot(), True)
+    restored = CausalGame.restore(game.seed, "Ada", game.snapshot(), True)
     assert restored.unlocked_homes == game.unlocked_homes
     assert restored.view(restored.player) == game.view(game.player)
     without = fresh(skills=("fingerprints", "search"))
@@ -1220,3 +1221,17 @@ def test_closing_a_conversation_is_always_possible_after_the_case_ends():
     assert game.view(game.player)["pending"] is None
     with pytest.raises(ValueError):
         game.play(("end",))
+
+
+def test_greeting_reveals_the_look_only_and_the_evening_waits_for_the_alibi_question():
+    game = fresh(0, ("search", "rapport"))
+    pid = sorted(game.case.plan.population)[0]
+    approach(game, pid)
+    known = dict(game.session.state.known)
+    assert "profile:" + pid in known and "evening:" + pid not in known
+    game.play(("ask", "relation"))
+    assert "evening:" + pid not in dict(game.session.state.known)
+    assert next(r["alibi"] for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:])) is None
+    game.play(("ask", "evening"))
+    assert "evening:" + pid in dict(game.session.state.known)
+    assert next(r["alibi"] for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:])) == "à vérifier"

@@ -1,5 +1,91 @@
 # Passation : client Godot
 
+## Tissu social — v29 (12 octobre 2026, côté backend)
+
+APK `builds/nexus-city-solo-debug-v29.apk`, versionCode 29 / `0.29-causal`, même signature.
+Moteur `causal-3d-v9` : nouvelles affaires. Retour de Maixent sur la seed 242 : deux comptables
+de la Régie « ne se connaissaient pas », et tout le monde semblait ami de la victime.
+
+- `build_life` (`scenario_life.py`) ajoute un flux `social-fabric-v1` : lien `COLLEAGUES`
+  (fait `shared_workplace`) pour toute paire d'un même lieu de travail, lien `NEIGHBORS`
+  (fait `same_street`) pour 60 % des paires d'une même rue, victime comprise. Les réponses
+  « demander X Y » les disent : « On travaille ensemble. », « On habite dans la même rue. ».
+- Le remplissage des liens directs avec la victime ne propose plus collègues/voisins (déjà
+  couverts) et tire `None` deux fois sur trois ; sinon amis / connaissances / fratrie.
+- Mesure sur 60 affaires : liens directs avec la victime 5,1 sur 7 en moyenne, dont ~2
+  collègues, ~1 voisin, ~1 ami, 0,8 couple, 0,6 connaissances, 0,4 fratrie ; aucune paire de
+  collègues qui s'ignore. Le noyau (`scenario_kernel`) fournit toujours ~2 liens narratifs.
+- Question « métier » (`Life.answer(pid, "work")`) : « Je tiens la comptabilité, à la Régie
+  vidéo, avec Tess et Ada. » Les noms cités entrent dans `named_people()` → fiches au
+  Commissariat. Demande de Maixent : remonter une piste « boulot » sans rencontrer tout le monde.
+- **Alibis partiels** (`partial_alibis` dans `PROFILES`, 0,25–0,45) : `build_evidence` crée des
+  `VerifiedPresence` de base `partial_service` pour des innocents non narratifs et, quand sa
+  trajectoire le permet, pour le coupable : visite vraie chevauchant ou précédant/suivant la
+  fenêtre du crime. `verify:X` donne « Entre 19 h moins le quart et 19 h et demie, cette personne
+  était à sa table. Après, je ne peux rien dire : je ne l'ai pas vue. » Claim sans `excludes`
+  (`partial: True`), `alibi_state` → `partial`, le registre ne cite jamais ces visites, la
+  famille « horaires » de l'audit les ignore. Vue : `notebook[].alibi == "hors période"`,
+  `leads[].state == "partial"` ; client : « VRAI · HORS PÉRIODE ». Sur 80 affaires : 48 avec
+  une visite partielle, dont 25 où c'est le coupable. Retour de Maixent : les alibis tombaient
+  toujours pile sur la fenêtre, le légiste ne servait à rien.
+
+- **Récit de soirée** (`scenario_evening.evening_account`) : une seule chronologie, « Jusqu'à
+  19 h et demie, j'étais chez moi : j'ai lu quelques pages… Ensuite, j'étais au Comptoir, entre
+  20 h et 22 h moins le quart. » L'heure vient de l'épisode domestique, calculé par personne
+  (sa première présence moins le trajet), plus du minimum global de la ville. Retour de Maixent :
+  « resté chez moi » puis un horaire précis dans un bar, sans transition.
+- **Pancartes** (`main.gd::_draw_actions`, `city_navigation.add_district`) : un quartier hors de
+  portée ce tour (trop loin ou PA insuffisants) garde sa pancarte, bouton désactivé à 55 %
+  d'opacité, « 2 PA · hors de portée ce tour ». Le menu « Quartiers » ne liste que les
+  destinations atteignables. Retour de Maixent : les pancartes disparaissaient à court de PA.
+
+- **Empoisonnement** (échange avec Maixent) : être vu dans la salle ne disculpe pas. Le client
+  réel du lieu (noyau) reçoit soit `continuous_noncontact` (60 %, flux `noncontact-v1`) : le
+  personnel « ne l'a pas quitté des yeux, sans toucher le verre », ce qui l'écarte (requiert
+  rapport + analyse du verre) ; soit `on_site` : « tout le monde pouvait s'approcher du
+  comptoir », claim sans `excludes` (`alibi_state` → `on_site`, vue « sur place », client
+  « VU SUR LES LIEUX »). Les alibis de service aléatoires et les registres ne sont jamais
+  placés dans le lieu du crime. Les témoins traitent `DRINK_ADDITION` comme l'acte décisif
+  (signalement de l'empoisonneur), ce qui garde les affaires résolubles. Sur 80 affaires
+  tirées : 25 empoisonnements, 18 avec un client surveillé, 5 avec un client seulement vu.
+  Le coupable, client réel du lieu, reçoit lui aussi une présence `on_site` (du service du
+  verre jusqu'à son départ réel, `compatible_presence`), donc le même récit de soirée que
+  l'autre client et une vérification possible chez le serveur : en v28 il était le seul à dire
+  « j'y étais, il y avait du monde » sans horaire ni serveur (Maixent, seed 225).
+  Un empoisonnement a toujours au moins un témoin du geste (`build_case` force
+  `focus_assault ≥ 1`) et le premier témoin de l'acte décisif garde un trait quand il en
+  existe un partageable (`WitnessBuilder`) : plus d'affaire « personne n'a rien vu » (Maixent,
+  seed 225 en v28 : six alibis à vérifier, dont trois dans la salle du crime, et rien d'autre).
+
+- **Crochetage** : `("unlock_home", home)` déverrouille et fait entrer (`session.go(home)`) en
+  une action de 1 PA ; le client pose `enter_requested` pour ouvrir l'intérieur aussitôt.
+  Avant : déverrouiller, puis « Entrer » séparément. Demande de Maixent.
+
+- **Ex et partenaire actuel** (`build_life`, flux `ex-and-partner-v1`) : dans 80 % des cas, un
+  fait `ex_and_partner` (détail `venom` / `grace` / `neutral`, tiré indépendamment de la
+  culpabilité) et un lien `ACQUAINTANCES`. `answer_about` dans les deux sens : « Celle qui a
+  pris la suite… je ne vais pas faire semblant d'avoir apprécié. » / « L'ex de Farid. C'était
+  fini depuis longtemps. » Retour de Maixent (seed 225) : une ex jalouse doit au moins connaître
+  la nouvelle compagne. L'humeur penche vers le venin si l'ex est partie à une tension
+  sentimentale du récit, vers la bienveillance sinon.
+- **Rupture amère** (`sour_breakup`) : le triangle que le noyau génère vraiment est victime +
+  partenaire actuel + ex de ce partenaire (réconciliation refusée, relation révélée). Ces deux
+  ex reçoivent un fait `sour_breakup` (`venom` deux fois sur trois, sinon `neutral`) et des
+  réponses dans les deux sens : « Mon ex. Ça s'est mal fini : elle n'acceptait pas que je passe
+  à autre chose. » / « Chloé est passée à autre chose, avec Tess. Je ne vais pas prétendre que ça
+  m'a fait plaisir. » Même information que la question « mobile », mais en paroles.
+- **Question « entourage »** : `("ask", "circle")` remplace `("ask", "habits")` dans le dossier
+  biographie du client (`rpg_dialogue.gd` : `["work", "circle"]`). Réponse : « Les gens que je
+  savais proches de Farid : Ada et Tess. » (personnes que le locuteur connaît et qui ont un
+  lien avec la victime), sinon « Je ne saurais pas dire… ». CLI : `question X entourage`.
+  Le « quotidien » ne servait à rien (Maixent).
+
+- **Salutation sans récit** : `PlaySession(greeting_reveals_evening=False)` dans l'adaptateur.
+  `meet:X` ne révèle plus que le profil ; la soirée attend « Alibi · Où étiez-vous hier soir ? »
+  (`interview:X`). La CLI garde la salutation complète. Retour de Maixent : après quatre
+  « quelle est votre relation ? », le carnet affichait leurs alibis « à vérifier » sans qu'il
+  les ait demandés.
+
 ## Phares — v28 (12 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v28.apk`, versionCode 28 / `0.28-causal`, même moteur et

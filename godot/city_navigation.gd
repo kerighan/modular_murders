@@ -103,7 +103,9 @@ func add_district(at: Vector3, title: String, locations: Array, cost: int, callb
 	button.custom_minimum_size = Vector2(208, 42 + mini(locations.size(), 3) * 19 + (28 if presence.has("count") else 0))
 	button.size = button.custom_minimum_size
 	button.disabled = not available
-	button.tooltip_text = "Quartier : " + title + "\n" + "\n".join(locations) + "\nAller (%d PA)" % cost
+	if not available:
+		button.modulate.a = 0.55  # faded, never absent: the city keeps its shape
+	button.tooltip_text = "Quartier : " + title + "\n" + "\n".join(locations) + ("\nAller (%d PA)" % cost if available else "\nHors de portée ce tour (%d PA)" % cost)
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button.set_meta("region", region)
 	button.set_meta("locations", locations.duplicate())
@@ -149,7 +151,7 @@ func add_district(at: Vector3, title: String, locations: Array, cost: int, callb
 		column.add_child(_presence_row(presence))
 		button.set_meta("presence_count", int(presence.count))
 	var budget := Label.new()
-	budget.text = "%d PA · rejoindre le quartier" % cost if available else "REPÉRÉ · trajet indisponible (%d PA)" % cost
+	budget.text = "%d PA · rejoindre le quartier" % cost if available else "%d PA · hors de portée ce tour" % cost
 	budget.add_theme_font_size_override("font_size", 10)
 	budget.add_theme_color_override("font_color", Color("73a2b2"))
 	budget.mouse_filter = Control.MOUSE_FILTER_IGNORE

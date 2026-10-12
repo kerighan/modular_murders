@@ -307,7 +307,7 @@ func _show_options(conversation: bool) -> void:
 			has_subjects = true
 			continue
 		# Relationship is a primary investigation question, not biography.
-		if key[0] == "ask" and key.size() > 1 and key[1] in ["work", "habits"]:
+		if key[0] == "ask" and key.size() > 1 and key[1] in ["work", "circle"]:
 			has_background = true
 			continue
 		if key[0] == "ask" and key.size() > 2 and key[1] == "service_action" and str(key[2]).begins_with("record:"):
@@ -404,7 +404,7 @@ func _show_people_questions(kind: String = "talk_about") -> void:
 	for option in options:
 		var key: Array = option[0]
 		if kind == "background":
-			if key[0] != "ask" or key.size() < 2 or key[1] not in ["work", "habits"]:
+			if key[0] != "ask" or key.size() < 2 or key[1] not in ["work", "circle"]:
 				continue
 		elif kind == "police_records":
 			if key[0] != "ask" or key.size() < 3 or key[1] != "service_action" or not str(key[2]).begins_with("record:"):

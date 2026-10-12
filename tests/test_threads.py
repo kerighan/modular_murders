@@ -188,3 +188,103 @@ def test_turn_mode_mistake_costs_minutes_but_closes_only_at_the_turn_end():
     assert not won and "3 tours" in text and s.time_left == 0 and not s.finished  # penalty pushed past the deadline
     s.end_turn()
     assert s.finished
+
+
+# ---------------------------------------------------------------- partial alibis, colleagues
+
+def test_partial_visits_are_true_verified_and_clear_nobody_including_the_author():
+    from scenario_play import sample_playable, PlaySession
+    seen_author = seen_innocent = False
+    for seed in range(40):
+        case = sample_playable(seed)
+        author = case.crime.kernel.roles.author
+        partial = [p for p in case.evidence.presences if p.basis == "partial_service"]
+        if not partial:
+            continue
+        s = PlaySession(case, ("search", "rapport"), strict=False, difficulty="libre")
+        s.do("inspect_scene")
+        s.do("request_exam")
+        s.place, s.at = "morgue", 10 ** 6
+        s.do("read_medical")
+        for p in partial:
+            s.place = case.life.people[p.person].home
+            s.do("meet:" + p.person)
+            s.place = p.place
+            text = s.do("verify:" + p.person)
+            assert "je ne l'ai pas vue" in text and s.alibi_state(p.person) == "partial"
+            assert p.person in s.remaining() and p.person not in s.register_entries()
+            seen_author |= p.person == author
+            seen_innocent |= p.person != author
+        assert author in s.remaining()
+        if seen_author and seen_innocent:
+            break
+    assert seen_author and seen_innocent  # a short true story is never a tell
+
+
+def test_work_answer_names_colleagues_who_then_have_police_records():
+    from scenario_play import sample_playable, PlaySession
+    case = sample_playable(242)
+    life = case.life
+    pairs = [(a, b) for a in life.people for b in life.people if a < b
+             and life.people[a].workplace == life.people[b].workplace]
+    assert pairs
+    for a, b in pairs:
+        assert life.knows(a, b)
+        if case.crime.kernel.roles.victim not in (a, b):
+            assert life.people[b].name in life.answer(a, "work") and life.people[a].name in life.answer(b, "work")
+            assert "On travaille ensemble" in life.answer_about(a, b)
+
+
+def test_an_ex_and_the_current_partner_know_each_other_with_a_tone_regardless_of_guilt():
+    from scenario_play import sample_playable
+    from scenario_life import Link
+    seen = 0
+    for seed in range(60):
+        case = sample_playable(seed)
+        life, victim = case.life, case.crime.kernel.roles.victim
+        for fact in life.ordinary:
+            if fact.kind != "ex_and_partner":
+                continue
+            ex, partner = fact.people
+            assert any(b.kind is Link.EXES for b in life.links(ex, victim))
+            assert any(b.kind is Link.PARTNERS for b in life.links(partner, victim))
+            assert life.knows(ex, partner) and fact.detail in ("venom", "grace", "neutral")
+            assert life.people[partner].name in life.answer_about(ex, partner)
+            assert "L'ex de" in life.answer_about(partner, ex)
+            seen += 1
+    assert seen >= 3
+
+
+def test_circle_question_names_only_people_the_speaker_knows_who_were_close_to_the_victim():
+    from scenario_play import sample_playable
+    case = sample_playable(225)
+    life, victim = case.life, case.crime.kernel.roles.victim
+    for pid in case.plan.population:
+        text = life.answer(pid, "circle")
+        for other in case.plan.population:
+            name = life.people[other].name
+            if other == pid:
+                continue
+            expected = life.knows(pid, other) and bool(life.links(other, victim))
+            assert (name in text) == expected, (pid, other, text)
+
+
+def test_a_sour_breakup_inside_the_story_gives_both_exes_a_pointed_answer():
+    from scenario_play import sample_playable
+    from scenario_life import Link
+    seen = 0
+    for seed in range(40):
+        case = sample_playable(seed)
+        life, victim = case.life, case.crime.kernel.roles.victim
+        for fact in life.ordinary:
+            if fact.kind != "sour_breakup":
+                continue
+            x, y = fact.people
+            assert victim not in fact.people and any(b.kind is Link.EXES for b in life.links(x, y))
+            moved_on = next(p for p in (x, y) if any(b.kind is Link.PARTNERS for b in life.links(p, victim)))
+            left = y if moved_on == x else x
+            assert "Mon ex" in life.answer_about(moved_on, left)
+            assert "On a été ensemble" in life.answer_about(left, moved_on)
+            assert fact.detail in ("venom", "neutral")
+            seen += 1
+    assert seen >= 3

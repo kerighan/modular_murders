@@ -100,7 +100,7 @@ func _run() -> void:
 	var keys := []
 	for button in client.dialogue.choices.get_children():
 		keys.append(button.get_meta("key", []))
-	_check(keys == [["ask", "work"], ["ask", "habits"]], "Biography folder should only contain work/daily life")
+	_check(keys == [["ask", "work"], ["ask", "circle"]], "Biography folder should only contain work and the victim's circle")
 	_check(client.view.ap == pa_before and client.view.clock == time_before, "Opening a folder must not spend PA/time")
 	await _question(["ask", "work"])
 	await _return_to_questions()
@@ -108,7 +108,7 @@ func _run() -> void:
 		if button.get_meta("background_picker", false):
 			await _tap(button)
 			break
-	await _question(["ask", "habits"])
+	await _question(["ask", "circle"])
 	await _return_to_questions()
 	_check(client.view.ap == 0, "Four fresh informative questions should exhaust this real seed-7 route")
 	var state: String = JSON.stringify(client.view.journal)

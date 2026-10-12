@@ -153,11 +153,15 @@ class Evidence:
             raise ValueError("Surface trace must derive from the actual weapon's use")
         seen = set()
         for p in self.presences:
-            if p.person in seen or p.person not in self.population or p.start > x.attack_at or p.end < x.attack_at:
+            covering = p.basis not in ("partial_service", "on_site")
+            if p.person in seen or p.person not in self.population or covering and (p.start > x.attack_at or p.end < x.attack_at):
                 raise ValueError("A single corroborated presence covering the criminal act")
+            if not covering and (p.start > p.end or p.basis == "partial_service" and p.person == c.kernel.roles.author
+                                 and p.start <= x.attack_at <= p.end):
+                raise ValueError("A partial presence is a real bounded visit")
             seen.add(p.person)
             # The author cannot be placed elsewhere while executing the real walk.
-            if p.person == c.kernel.roles.author:
+            if p.person == c.kernel.roles.author and covering:
                 raise ValueError("Contradictory alibi")
             if not compatible_presence(c, p):
                 raise ValueError("Alibi contradicts an existing physical trajectory")
@@ -167,11 +171,13 @@ class Evidence:
                 raise ValueError("Corroboration requires actual staff on shift at the observed venue")
             venue = next((v for v in c.venue_presences if v.person == p.person), None)
             if venue:
-                if p.place != venue.place or p.basis != "continuous_noncontact":
+                if p.place != venue.place or p.basis not in ("continuous_noncontact", "on_site"):
                     raise ValueError("Do not relocate an actual venue visitor")
-                if p.start != x.exposure.served_at or p.end != x.death_at:
+                if p.basis == "continuous_noncontact" and (p.start != x.exposure.served_at or p.end != x.death_at):
                     raise ValueError("Must observe the whole glass exposure")
-            elif p.basis != "continuous_service":
+                if p.basis == "on_site" and not (p.start == x.exposure.served_at and p.start < p.end <= x.death_at):
+                    raise ValueError("Seen in the room from the glass service, for a real while")
+            elif p.basis not in ("continuous_service", "partial_service"):
                 raise ValueError("Public service observation, not an anonymous domestic visitor")
 
     def description(self, clip):
@@ -227,7 +233,7 @@ def crime_window(crime):
 RIDGES = ("boucle A", "arc B", "spirale C", "boucle D")  # partial patterns: a few people share each one
 
 
-def build_evidence(crime, seed=0, appearances=None, *, required_alibis=()):
+def build_evidence(crime, seed=0, appearances=None, *, required_alibis=(), partial_alibis=0.0):
     rng = random.Random(f"evidence-v1:{seed}")
     people, x = crime.kernel.world.people, crime.execution
     appearances = appearances or sample_appearances((p.id for p in people), seed)
@@ -271,7 +277,33 @@ def build_evidence(crime, seed=0, appearances=None, *, required_alibis=()):
     for t in crime.transfers:
         if t.kind.value in ("acquisition", "innocent_loan"):
             contacts.append(Contact("contact:" + t.id, t.actor, t.tool, t.origin, t.minute, ridges[t.actor]))
+    from scenario_means import Method
     presences = []
+    # A true visit that does not cover the whole crime window: the staff confirms
+    # it, it clears nobody. Innocents get them, and sometimes the author too, so a
+    # short true story is never a tell.
+    partial = random.Random(f"partial-alibi-v1:{seed}")
+
+    def partial_presence(pid):
+        if any(v.person == pid for v in crime.venue_presences):
+            return None  # an actual venue visitor keeps that visit
+        window_start, window_end = crime_window(crime)
+        keepers = list(crime.keepers)
+        partial.shuffle(keepers)
+        cut = partial.choice((15, 30))
+        spans = [(max(0, window_start - partial.choice((15, 30, 45))), window_start + cut),
+                 (window_end - cut, min(1439, window_end + partial.choice((15, 30, 45)))),
+                 (max(0, window_start - 90), window_start - 15),  # entirely before: true, and beside the point
+                 (window_end + 15, min(1439, window_end + 90))]
+        partial.shuffle(spans)
+        for start, end in spans:
+            for keeper in keepers:
+                candidate = VerifiedPresence("presence:" + pid, pid, keeper.place, start, end, keeper.id, "partial_service")
+                if (any(a <= start <= end <= b for a, b in keeper.shifts) and compatible_presence(crime, candidate)
+                        and not (start <= x.attack_at <= end and pid == crime.kernel.roles.author)):
+                    return candidate
+        return None
+
     for p in people:
         if p.id in (crime.kernel.roles.author, crime.kernel.roles.victim):
             continue
@@ -279,10 +311,18 @@ def build_evidence(crime, seed=0, appearances=None, *, required_alibis=()):
         if not (selected or p.id in required_alibis):
             continue
         venue = next((v for v in crime.venue_presences if v.person == p.id), None)
+        if venue is None and p.id not in required_alibis and partial.random() < partial_alibis:
+            candidate = partial_presence(p.id)
+            if candidate is not None:
+                presences.append(candidate)
+            continue
         if venue:
+            # In the poisoning room, the staff vouches for one guest only when they truly
+            # never lost sight of them; otherwise being seen there is just being there.
             keeper = next(k for k in crime.keepers if k.place == venue.place)
+            watched = random.Random(f"noncontact-v1:{seed}:{p.id}").random() < .6
             presence = VerifiedPresence("presence:" + p.id, p.id, venue.place,
-                x.exposure.served_at, x.death_at, keeper.id, "continuous_noncontact")
+                x.exposure.served_at, x.death_at, keeper.id, "continuous_noncontact" if watched else "on_site")
             if compatible_presence(crime, presence):
                 presences.append(presence)
         else:
@@ -292,6 +332,8 @@ def build_evidence(crime, seed=0, appearances=None, *, required_alibis=()):
             padded_end = min(1439, window_end + padding.choice((0, 5, 10, 15)))
             keepers = list(crime.keepers)
             random.Random(f"service-alibi-v1:{seed}:{p.id}").shuffle(keepers)
+            if crime.method is Method.POISONED:
+                keepers = [k for k in keepers if k.place != crime.scene]  # on site, a guest is a suspect, not an alibi
             found = False
             for start, end in ((padded_start, padded_end), (window_start, window_end)):
                 for keeper in keepers:
@@ -304,6 +346,23 @@ def build_evidence(crime, seed=0, appearances=None, *, required_alibis=()):
                         break
                 if found:
                     break
+    if partial.random() < partial_alibis:
+        candidate = partial_presence(crime.kernel.roles.author)
+        if candidate is not None:
+            presences.append(candidate)
+    # The poisoner really sat in that room too: the staff saw them like any other guest.
+    # Same kind of statement as the other visitor, so the story never singles them out.
+    author = crime.kernel.roles.author
+    venue = next((v for v in crime.venue_presences if v.person == author), None)
+    if venue is not None:
+        keeper = next(k for k in crime.keepers if k.place == venue.place)
+        end = min(x.death_at, venue.until)
+        while end > x.exposure.served_at:  # as long as the real escape walk allows
+            candidate = VerifiedPresence("presence:" + author, author, venue.place, x.exposure.served_at, end, keeper.id, "on_site")
+            if compatible_presence(crime, candidate):
+                presences.append(candidate)
+                break
+            end -= 1
     from scenario_means import Method
     kind = "victim_blood" if crime.method is not Method.POISONED else "agent_residue"
     surfaces = (SurfaceTrace(x.tool, kind, x.attack_at, "physical_attack"),)

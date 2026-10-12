@@ -367,7 +367,7 @@ def statements(layer, witness_id):
                 text += f" Ses cheveux étaient {look.hair.value}. Je n'ai pas reconnu son visage."
             else:
                 text += " Je n'ai pas assez bien vu pour décrire la personne."
-        relevance = "assailant_description" if event.kind is EventKind.ASSAULT else "context"
+        relevance = "assailant_description" if event.kind in (EventKind.ASSAULT, EventKind.DRINK_ADDITION) else "context"
         support = matching(layer, perception) if relevance != "context" else layer.population
         rows.append(Statement("testimony:" + perception.id, witness_id, text, (perception.id,), support, relevance))
     return tuple(rows)
@@ -430,7 +430,7 @@ class WitnessBuilder:
         # No always-present decisive observer; some scenes have only context or
         # no extra passer-by. Solvability comes later, without changing the crime.
         if focus_assault:
-            choices = tuple(e for e in choices if e.kind is EventKind.ASSAULT)
+            choices = tuple(e for e in choices if e.kind in (EventKind.ASSAULT, EventKind.DRINK_ADDITION))  # the decisive act, blade or glass
             if not choices:
                 raise ValueError("Cannot author an assault witness in a non-assault crime")
         count = focus_assault or self.rng.choice((1, 2, 2))
@@ -462,6 +462,10 @@ class WitnessBuilder:
                                    and getattr(a, field) is getattr(look, field)]
                 if len(matching_people) >= 2:
                     aspects.append(aspect)
+            # The first witness authored for the decisive act keeps one trait when any
+            # is shareable: a case is never only silhouettes.
+            if focus_assault and index == 0 and len(aspects) > 1:
+                aspects = aspects[1:]
             record(w, event, self.rng.choice(aspects))
         return WitnessLayer(crime, streets, appearances, events, tuple(witnesses), tuple(presences),
                             tuple(attention), tuple(perceptions))

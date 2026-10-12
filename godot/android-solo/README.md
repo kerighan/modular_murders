@@ -1,5 +1,32 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.29-causal** : `../builds/nexus-city-solo-debug-v29.apk`.
+Tissu social : les collègues d'un même lieu de travail se connaissent toujours
+(« On travaille ensemble »), les gens d'une même rue le plus souvent, et le
+cercle direct de la victime est moins systématiquement amical (amis, fratrie
+et connaissances plus rares ; collègues et voisins nommés comme tels). La
+question « métier » cite les collègues, ce qui donne des noms à chercher au
+commissariat. Alibis partiels : certaines personnes, parfois le coupable, ont
+vraiment été vues dans un établissement mais pas sur toute la période du
+crime ; le personnel le confirme sans mettre hors de cause, et le rapport du
+légiste redevient nécessaire pour lire un alibi. Récit de soirée
+chronologique (« Jusqu'à 19 h et demie, j'étais chez moi… Ensuite, j'étais au
+Comptoir… »). Pancartes de quartier hors de portée affichées en transparence
+au lieu de disparaître. Empoisonnement : être vu dans la salle ne disculpe
+pas ; le personnel ne met hors de cause qu'un client qu'il n'a vraiment jamais
+quitté des yeux (pas systématique), les alibis de service et les registres ne
+sont jamais dans la salle du crime, et les témoins décrivent l'empoisonneur
+comme un agresseur, et il y a toujours au moins un témoin du geste. Crocheter une porte fait entrer directement dans
+l'appartement (une seule action). Rencontrer quelqu'un ne donne plus que son
+apparence ; son récit de soirée attend la question « Alibi ». Une ex et le partenaire actuel de la
+victime se connaissent le plus souvent, avec une humeur tirée au sort
+(venimeuse, bienveillante ou neutre) quand on demande à l'un l'avis sur
+l'autre ; les ruptures amères du récit (réconciliation refusée) donnent des
+réponses piquantes dans les deux sens. La question « quotidien » est remplacée par « Qui fréquentait la
+victime ? », qui cite les proches connus du suspect. Moteur `causal-3d-v9` : les sauvegardes v28
+repartent sur une nouvelle enquête. Même signature.
+
+
 Version **0.28-causal** : `../builds/nexus-city-solo-debug-v28.apk`.
 Phares corrigés : feux blanc chaud et feux arrière rouges seulement sur les
 voitures en circulation, voitures garées éteintes, plus de faisceau au sol.

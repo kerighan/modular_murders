@@ -83,24 +83,31 @@ def validate_evenings(crime, evidence, episodes):
 
 def build_evenings(crime, evidence, seed):
     schedule = physical_schedule(crime, evidence)
-    # Enough travel margin to reach ANY first constrained presence from home.
     streets = crime.streets
-    margin = max(sum(streets.duration(a, b) for a, b in zip(path, path[1:]))
-                 for path in streets._paths.values()) + 30
-    end = min(start for _, _, start, _ in schedule) - margin
+
+    def home_until(person):
+        """At home until it is time to leave for one's own first evening commitment."""
+        rows = [(start, place) for who, place, start, _ in schedule if who == person.id and start >= 0]
+        if not rows:
+            return 22 * 60
+        start, place = min(rows)
+        path = streets.path(person.home, place)
+        travel = sum(streets.duration(a, b) for a, b in zip(path, path[1:]))
+        return max(40, ((start - travel - 10) // 15) * 15)
     episodes = []
-    activities = ["J'ai préparé quelque chose à manger chez moi.",
-                  "J'ai écouté un vieux disque chez moi. J'avais besoin de décompresser.",
-                  "J'ai fait un peu de rangement chez moi. Rien de passionnant.",
-                  "J'ai lu quelques pages chez moi. Je n'arrivais pas à me concentrer.",
-                  "J'ai essayé de réparer ma vieille radio chez moi. Elle grésille toujours.",
-                  "J'ai trié des photos chez moi. J'ai retrouvé de vieux souvenirs.",
-                  "J'ai fait une lessive chez moi. J'avais laissé le linge s'accumuler.",
-                  "J'ai passé un moment chez moi, à écouter la pluie. Je n'avais pas envie de sortir tout de suite."]
+    activities = ["j'ai préparé quelque chose à manger.",
+                  "j'ai écouté un vieux disque, j'avais besoin de décompresser.",
+                  "j'ai fait un peu de rangement, rien de passionnant.",
+                  "j'ai lu quelques pages sans arriver à me concentrer.",
+                  "j'ai essayé de réparer ma vieille radio, elle grésille toujours.",
+                  "j'ai trié des photos, j'ai retrouvé de vieux souvenirs.",
+                  "j'ai fait une lessive, j'avais laissé le linge s'accumuler.",
+                  "j'ai écouté la pluie, je n'avais pas envie de sortir tout de suite."]
     random.Random(f"evening-activities-v2:{seed}").shuffle(activities)
     for person in sorted(crime.kernel.world.people, key=lambda p: p.id):
         if person.id == crime.kernel.roles.victim:
             continue
+        end = home_until(person)
         episodes.append(EveningEpisode("evening_episode:" + person.id, person.id,
                                       person.home, end - 20, end, activities[len(episodes) % len(activities)]))
     validate_evenings(crime, evidence, episodes)
@@ -127,7 +134,7 @@ def remembered_times(presence):
     For the short poison observation, the credible memory is an event sequence
     (drink served -> collapse), not an exact pair of clock readings.
     """
-    if presence.basis == "continuous_noncontact":
+    if presence.basis in ("continuous_noncontact", "on_site"):
         return {}
     start, end = ((presence.start + 14) // 15) * 15, (presence.end // 15) * 15
     if start > end:
@@ -136,23 +143,26 @@ def remembered_times(presence):
 
 
 def evening_account(crime, evidence, episodes, pid):
+    """One chronological story: at home until a landmark, then where the evening went."""
     episode = next(r for r in episodes if r.person == pid)
     labels = {n.id: n.label for n in crime.streets.nodes}
     def at_place(place):
         label = labels[place]
         return "au " + label[3:] if label.startswith("Le ") else "à " + label
+    until = spoken_time((episode.end // 15) * 15)
+    activity = episode.activity[0].upper() + episode.activity[1:]  # no digital clock, no colon: spoken landmarks only
     presence = next((p for p in evidence.presences if p.person == pid), None)
     if presence:
         keeper = next(k for k in crime.keepers if k.id == presence.witness)
         times = remembered_times(presence)
-        when = f", entre {spoken_time(times['start'])} et {spoken_time(times['end'])}" if times else ", pendant une partie de la soirée"
-        detail = f"J'étais {at_place(presence.place)}{when}. {keeper.name} était de service ; il m'a vu à ma table."
-        return episode.activity + "\n" + detail
+        when = f", entre {spoken_time(times['start'])} et {spoken_time(times['end'])}" if times else ", une partie de la soirée"
+        return (f"Jusqu'à {until}, j'étais chez moi. {activity}\n"
+                f"Ensuite, j'étais {at_place(presence.place)}{when}. {keeper.name} était de service ; il m'a vu à ma table.")
     venue = next((v for v in crime.venue_presences if v.person == pid), None)
     if venue:
-        return episode.activity + f"\nJe suis aussi passé {at_place(venue.place)}. Il y avait du monde."
+        return f"Jusqu'à {until}, j'étais chez moi. {activity}\nEnsuite, je suis passé {at_place(venue.place)}. Il y avait du monde."
     borrowing = next((b for b in crime.mundane_borrowings if b.actor == pid), None)
     if borrowing:
         place = at_place(borrowing.outbound.nodes[-1])
-        return episode.activity + f"\nDans la journée, je suis passé {place} chercher un objet qu'on m'avait prêté."
-    return episode.activity
+        return f"Dans la journée, je suis passé {place} chercher un objet qu'on m'avait prêté.\nLe soir, je suis resté chez moi. {activity}"
+    return f"Je suis resté chez moi toute la soirée. {activity}"

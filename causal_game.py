@@ -15,7 +15,7 @@ from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v7"  # turn-based clock: time only moves at the end of a turn; new investigations required
+VERSION = "causal-3d-v9"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
 TURN_MINUTES = 30  # one turn of six actions on the case clock
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
@@ -90,7 +90,8 @@ class CausalGame:
             raise ValueError("Difficulté inconnue")
         # Free mode: any named person can be accused, a mistake costs time,
         # and the deadline scales with the shortest thread of this case.
-        self.session = PlaySession(self.case, tuple(items), strict=False, difficulty=difficulty, turn_minutes=TURN_MINUTES)
+        self.session = PlaySession(self.case, tuple(items), strict=False, difficulty=difficulty, turn_minutes=TURN_MINUTES,
+                                   greeting_reveals_evening=False)  # the evening is the "Alibi" question, asked on purpose
         self.difficulty = difficulty
         self.session.place = start
         self.player.items, self.player.place = set(items), start
@@ -393,7 +394,7 @@ class CausalGame:
                 options[("ask", "observations")] = "Témoin · Avez-vous remarqué quelque chose ? (1 PA, une fois)"
                 options[("ask", "motive")] = "Mobile · Y avait-il des tensions ? (1 PA, une fois)"
                 options[("ask", "work")] = "Votre travail ?"
-                options[("ask", "habits")] = "Votre quotidien en dehors du travail ?"
+                options[("ask", "circle")] = "Qui fréquentait " + self.case.life.people[self.case.crime.kernel.roles.victim].name + " ?"
                 if "victim_diary" in dict(s.state.known) and self.case.claims["victim_diary"]["appointment"]:
                     options[("ask", "appointment")] = "Le rendez-vous noté dans son agenda ?"
                 options.update({("talk_about", int(self.speaker[1:]), int(pid[1:])): person.name
@@ -502,10 +503,12 @@ class CausalGame:
             else:
                 self._cue("Personne ne répond. L'appartement est vide.", name=p.name)
         elif action == "unlock_home":
+            # Picking the lock walks you in: one action, no second trip through the menu.
             self.unlocked_homes.add(key[1])
             p.ap -= 1
-            s.at += 5
-            self._cue("La serrure cède. Vous pouvez entrer dans l'appartement.", name=p.name)
+            s.go(key[1])
+            s.doorstep = None
+            self._cue("La serrure cède. Vous entrez dans l'appartement.", name=p.name)
         elif action == "interrogate":
             self.open_questions("p" + str(key[1]))
         elif action == "service_menu":
@@ -792,7 +795,7 @@ class CausalGame:
                                              "next": {**next_positions[pid], "label": labels[next_positions[pid]["place"]]}} if identified else None,
                              "deductions": deductions[pid] if identified else [],
                              "life": None, "relationship": {"claim": self.case.life.answer(pid), "reported": None, "witnesses": [], "contradiction": False} if any(r["id"] == "context:" + pid + ":relation" for r in s.journal) else None,
-                             "alibi": {"confirmed": "confirmé", "corroborated": "corroboré", "reported": "à vérifier", "unknown": None}[s.alibi_state(pid)],
+                             "alibi": {"confirmed": "confirmé", "corroborated": "corroboré", "partial": "hors période", "on_site": "sur place", "reported": "à vérifier", "unknown": None}[s.alibi_state(pid)],
                              "corroboration": next((r["text"] for r in s.journal if r["id"] == "alibi:" + pid), None),
                              "claim": next((r["text"] for r in s.journal if r["id"] == "evening:" + pid), None), "with": [], "said": []})
         acquired_places = {key: s.discovery_places.get(a.id, a.place) for a in self.case.plan.actions if a.id in s.state.completed for key in a.reveals}
@@ -839,6 +842,8 @@ class CausalGame:
             verification = next(a for a in self.case.plan.actions if a.id == "verify:" + pid)
             collected = "alibi:" + pid in known
             confirmed = s.alibi_state(pid) == "confirmed"
+            partial = s.alibi_state(pid) == "partial"
+            on_site = s.alibi_state(pid) == "on_site"
             name = self.case.life.people[pid].name
             keeper = self.source_person(verification.actor, verification.operation)
             account = self.case.claims["evening:" + pid]
@@ -846,10 +851,12 @@ class CausalGame:
             leads.append({"id": "evening:" + pid, "title": "Vérifier le récit de " + name,
                 "reason": name + " dit avoir été " + at_label(labels[presence_row.place]) + ", " + when + "."
                     + (" Le témoignage couvre la période du crime : alibi confirmé." if confirmed else
+                       " Récit vrai, mais le personnel ne couvre pas toute la période : cela n'écarte personne." if partial else
+                       " Cette personne était dans la salle au moment de l'empoisonnement : une occasion, pas un alibi." if on_site else
                        " Récit corroboré. Il reste à comparer ses horaires au rapport médical" + (" et à l'analyse du verre." if self.case.crime.method is Method.POISONED else ".") if collected else
                        " " + keeper["name"] + " peut vérifier ce récit sur place."),
                 "objective": "Témoignage recueilli" if collected else "Sur place · parler " + at_label(keeper["name"]) + " → Vérifier le récit de " + name,
-                "complete": collected, "state": "confirmed" if confirmed else "corroborated" if collected else "open",
+                "complete": collected, "state": "confirmed" if confirmed else "partial" if partial else "on_site" if on_site else "corroborated" if collected else "open",
                 "destinations": [] if collected else [{"place": verification.place, "label": labels[verification.place]}]})
         for thread in s.inquiry_threads():
             pid = thread["person"]
@@ -871,7 +878,7 @@ class CausalGame:
         if "drink_sample" in known:
             result = "drink_result" in known
             analysis = next(a for a in self.case.plan.actions if a.id == "analyze_drink")
-            ready = self.case.plan.next_time(analysis, s.state, after=s.at)
+            ready = s.effective_plan.next_time(analysis, s.state, after=s.at)  # the session's plan, not the raw catalogue
             turns = math.ceil(max(0, ready - s.at) / 15) if ready is not None else 0
             leads.append({"id": "drink_analysis", "title": "Le verre retrouvé près du corps",
                 "reason": next(r["text"] for r in s.journal if r["id"] == "drink_result") if result else

@@ -6,7 +6,7 @@ reconstruction. Rumours never enter the engine's certified trait deductions.
 """
 import random
 
-from genotype import LinkToVictim
+from genotype import Gender, LinkToVictim
 from city import TRAIT_TEXT
 from scenario_graph import Observation, ScenarioGraph
 
@@ -152,8 +152,7 @@ class CaseStory:
         if self.work_conflict:
             self.sources["work"] = {"place": self.workplace, "title": "Le conflit au travail",
                 "text": f"La victime travaillait ici comme {self.profession}. Le planning et une note de réunion décrivent un différend avec "
-                        f"{self._names(self.work_conflict)}. Rien ici ne les situe à l'heure du crime. "
-                        "Leur demander leur version, puis vérifier leurs horaires plutôt que transformer ce conflit en verdict.",
+                        f"{self._names(self.work_conflict)}. Le planning ne couvre pas la soirée du meurtre.",
                 "people": sorted(self.work_conflict), "leads": [f"house_{s}" for s in game.order if s in self.work_conflict]}
 
     def _names(self, people):
@@ -162,6 +161,44 @@ class CaseStory:
     def observed(self, p):
         return {"trace" if k.startswith("trace_") else k for k in p.story_found}
 
+    def scenes_at(self, place, people):
+        """Provider hook: world-authored exchanges, with no player/UI state.
+
+        Ids are stable per pair/topic, independent of place and arrival count.
+        These remarks reveal a social connection, not a certified murder fact.
+        Only actual connections generate exchanges; never arbitrary accusations.
+        """
+        if place not in ("bar", "cabaret", "den", "hospital", "restaurant"):
+            return []
+        g, scenes = self.game, []
+        for position, a in enumerate(people):
+            for b in people[position + 1:]:
+                relation = self.relations[a] if self.relations[a]["target"] == b else self.relations[b] if self.relations[b]["target"] == a else None
+                colleagues = g.case[a][LinkToVictim] == g.case[b][LinkToVictim] == LinkToVictim.COLLEAGUE
+                neighbours = g.map[f"house_{a}"][1][0] == g.map[f"house_{b}"][1][0]
+                if relation:
+                    first, second = (a, b) if self.relations[a]["target"] == b else (b, a)
+                    reason = relation["reason"]
+                    lines = {
+                        "une dette jamais remboursée": ("Cette histoire d'argent me reste en travers de la gorge.", "Pas ici. On peut en parler ailleurs ?"),
+                        "une place convoitée au travail": ("Tu pourrais au moins arrêter de parler de cette place devant moi.", "D'accord. Pas ce soir."),
+                        "un service qui a mal tourné": ("La dernière fois que j'ai voulu rendre service, ça m'est retombé dessus.", "Je sais. Je ne te demande plus rien."),
+                        "une dispute entendue dans l'escalier": ("On vous entendait jusque dans l'escalier, l'autre soir.", "Je n'avais pas envie que tout l'immeuble soit au courant."),
+                    }[reason]
+                    topic = "relation"
+                elif colleagues:
+                    first, second, topic = a, b, "colleagues"
+                    lines = ("Depuis sa mort, je n'arrive plus à me concentrer au travail.", "Moi non plus. J'ai encore du mal à réaliser.")
+                elif neighbours:
+                    first, second, topic = a, b, "neighbours"
+                    lines = ("Je n'ai pas envie de rentrer. Tout me rappelle ce qui s'est passé dans le quartier.", "Je comprends. Je vais rester encore un peu, moi aussi.")
+                else:
+                    continue
+                scenes.append({"id": f"exchange:{min(a, b)}:{max(a, b)}:{topic}", "topic": topic,
+                               "actors": [first, second],
+                               "beats": [{"actor": first, "text": lines[0]}, {"actor": second, "text": lines[1]}]})
+        return scenes
+
     def _sources(self):
         g, spec = self.game, self.spec
         rival = g.name(self.rival)
@@ -169,45 +206,40 @@ class CaseStory:
         item = spec["object"]
         docs = {
             "clock": {"place": "crime_scene", "title": "La fenêtre du crime",
-                      "text": f"Le constat situe le meurtre {self.window}. Les déplacements et les horaires peuvent départager les récits.",
+                      "text": f"Le rapport de police situe la mort {self.window}. Aucun agresseur n'y est identifié.",
                       "people": [], "leads": []},
-            "trace": {"place": "house_0", "title": "Une trace à replacer dans le temps",
-                      "text": f"{spec['document']} La correspondance décrit une même pression concernant {self._names(self.pressure_people)}. "
-                              "Ces papiers établissent un mobile possible pour plusieurs personnes, pas une présence sur la scène. "
-                              "Une caméra donne sur le lieu du crime : comparer les images avec l'heure du constat.",
+            "trace": {"place": "house_0", "title": {"theft": "Les relances du créancier", "blackmail": "Le courrier à l'avocat", "revenge": "Une demande d'excuses"}[self.family],
+                      "text": f"{spec['document']} Plusieurs noms reviennent dans les courriers : {self._names(self.pressure_people)}. "
+                              "Aucun de ces courriers ne raconte la soirée du meurtre. La rue où la victime a été retrouvée est couverte par une caméra de la Régie vidéo.",
                       "people": sorted(self.pressure_people), "leads": ["crime_scene", "cctv"], "target": 0},
-            "rival": {"place": f"house_{self.rival}", "title": "Un conflit réel, une autre chronologie",
+            "rival": {"place": f"house_{self.rival}", "title": f"Une attestation pour {rival}",
                       "text": f"{spec['document']} {rival} partage cette pression avec {self._names(self.pressure_people - {self.rival})}. "
-                              f"Une attestation prétend couvrir toute la fenêtre du crime. Lieu indiqué : {'son domicile' if g.night[self.rival] == 'home' else g.label(g.night[self.rival])}. "
-                              f"Vérifier cette pièce auprès de {g.label(self.check_place)} avant de conclure.",
+                              f"Une attestation indique sa présence {'à son domicile' if g.night[self.rival] == 'home' else 'à ' + g.label(g.night[self.rival])}, {self.window}. "
+                              f"Le document porte la mention : « Original conservé — {g.label(self.check_place)} ».",
                       "people": [self.rival], "leads": [self.check_place], "target": self.rival},
         }
         if item:
             docs["loss"] = {"place": "victim_house", "title": "Un objet manque",
                 "text": f"{spec['effect']} Ses notes situent ce coffre à {g.label(spec['relay'])}. "
                         "Il sert à plusieurs usagers du lieu, qui ne se connaissent pas forcément. "
-                        "Qui pouvait l'ouvrir ? Aller consulter sur place le registre des clés.",
+                        "Les doubles de clé sont inscrits dans un registre conservé sur place.",
                 "people": [], "leads": [spec["relay"]]}
             docs["access"] = {"place": spec["relay"], "title": "Qui pouvait ouvrir le coffre ?",
                 "text": f"Le registre signale la disparition de {item}, que la victime avait rangé dans ce coffre. "
                         "Le coffre a été ouvert sans être forcé. "
                         f"Le registre indique que plusieurs usagers détenaient un double de sa clé : {names}. "
-                        "Personne n'a vu qui a ouvert le coffre. Détenir une clé ne prouve pas qu'on a volé l'objet, "
-                        "encore moins qu'on a tué sa propriétaire. Chercher un mobile, puis vérifier les images du crime.",
+                        "Le registre ne précise pas qui a ouvert le coffre ce soir-là.",
                 "people": self.access, "leads": [f"house_{s}" for s in self.access]}
             if self.cache_place:
                 docs["cache"] = {"place": self.cache_place, "title": "L'objet retrouvé dans une cache",
                     "text": f"Derrière une grille descellée, vous retrouvez {item}. "
                             "Son marquage correspond à celui décrit dans les affaires de la victime. "
-                            "Aucun nom, aucune trace exploitable : impossible de savoir qui l'a caché ici. "
-                            "La découverte ne désigne personne et n'innocente aucun des suspects.",
+                            "Aucun nom, aucune trace exploitable : impossible de savoir qui l'a caché ici.",
                     "people": [], "leads": []}
         else:
             docs["meeting"] = {"place": "victim_house", "title": "Qui connaissait le rendez-vous ?",
                 "text": f"{spec['effect']} Une invitation privée indique où retrouver la victime après cette réunion. "
-                        f"Des copies ont été envoyées à {names}. Recevoir une invitation n'implique pas de connaître personnellement son organisatrice. "
-                        "Plusieurs personnes connaissaient donc ce rendez-vous ; rien ne dit qu'elles s'y sont rendues. "
-                        "Chercher le conflit derrière cette rencontre, puis vérifier les images du crime.",
+                        f"Des copies ont été envoyées à {names}. Aucun registre de présence n'accompagne les invitations.",
                 "people": self.access, "leads": [f"house_{s}" for s in self.access]}
         for sid in self.pressure_people - {0}:
             docs[f"trace_{sid}"] = {**docs["trace"], "place": f"house_{sid}", "target": sid}
@@ -217,8 +249,7 @@ class CaseStory:
             docs[f"life_{sid}"] = {
                 "place": f"house_{sid}", "title": "Une vie derrière la porte",
                 "text": f"Des papiers de {g.name(sid)} évoquent {profile['secret']}. Son projet : {profile['goal']}. "
-                        "Ces documents racontent sa vie ; aucun lien avec le meurtre n'est établi. "
-                        "Pour avancer, chercher un indice de la scène ou suivre une piste du carnet plutôt qu'un nom au hasard.",
+                        "Ces papiers évoquent sa vie personnelle.",
                 "people": [sid], "leads": [], "target": sid,
             }
         return docs
@@ -232,7 +263,7 @@ class CaseStory:
         keys = self.available_sources(p)
         p.story_examined.add(p.place)
         if not keys:
-            return ["Aucun nouveau document à relever ici. Les fouilles d'indices restent distinctes."]
+            return ["Vous avez déjà relevé les documents de ce lieu."]
         events = []
         for key in keys:
             doc = self.sources[key]
@@ -242,8 +273,7 @@ class CaseStory:
                 item = self.spec["object"].removesuffix(" de la victime")
                 doc = {**doc, "title": "Un objet caché, à identifier",
                        "text": f"Derrière une grille descellée, vous trouvez {item}. Vous notez son marquage. "
-                               "Aucun nom n'indique qui l'a caché là, ni à qui il appartient. "
-                               "Comparer ce marquage avec les papiers du domicile de la victime avant de faire un rapprochement.",
+                               "Aucun nom n'indique qui l'a caché là, ni à qui il appartient.",
                        "leads": ["victim_house"]}
             p.story_found.add(key)
             for sid in doc["people"]:
@@ -260,29 +290,51 @@ class CaseStory:
     def life(self, p, sid):
         profile = self.profiles[sid]
         p.story_profiles.add(sid)
-        return f"Je voudrais {profile['goal']}. En ce moment, j'ai surtout {profile['pressure']} sur le dos.", []
+        replies = {
+            "ouvrir un atelier": "J'aimerais ouvrir mon atelier. Mais il y a ce prêt… Tant qu'il n'est pas remboursé, je suis coincé.",
+            "obtenir une promotion": "J'attendais une promotion. Après ma dernière évaluation, je n'y crois plus trop.",
+            "quitter le quartier": "Partir d'ici. C'est ce que je voudrais. Je n'en ai pas encore parlé autour de moi.",
+            "protéger un proche": "J'ai voulu aider quelqu'un qui m'est proche. Le service que j'ai rendu… Je ne suis pas fier de ça.",
+            "récupérer de l'argent prêté": "J'ai prêté de l'argent et j'en ai besoin maintenant. Mes économies ne vont pas durer éternellement.",
+            "recommencer ma vie": "La séparation a été difficile. J'essaie de repartir de zéro, c'est tout.",
+            "rembourser une dette": "Je dois rembourser demain. Je n'ai pas l'argent. Ça me réveille la nuit.",
+            "empêcher la divulgation d'un dossier": "Il y a des documents que je ne veux pas voir sortir. Si ça arrive, je risque de tout perdre.",
+            "obtenir réparation d'un conflit": "Ce qui s'est passé en public… Je n'arrive pas à le laisser derrière moi. J'aurais voulu des excuses.",
+        }
+        text = replies[profile["goal"]]
+        # Agreement is presentation only; neither guilt nor extra knowledge.
+        if self.game.case[sid][Gender] == Gender.FEMALE:
+            text = text.replace("coincé.", "coincée.").replace("pas fier de", "pas fière de")
+        return text, []
 
     def rumours(self, p, sid):
         g, knowledge = self.game, self.knowledge[sid]
         if not self._knows_victim(p, sid):
-            return "Je ne connaissais pas la victime. Je ne peux pas vous renseigner sur sa vie ou ses conflits.", []
+            return "Je ne connaissais pas la victime. Non, je ne sais pas qui pouvait lui en vouloir.", []
         if knowledge == "work":
-            text = ("Elle m'avait parlé de tensions au travail, avec plusieurs personnes. Je ne sais pas lesquelles. "
-                    f"Cherchez ses collègues à {g.label(self.workplace)} ; ils pourront expliquer ce qui se passait.")
+            text = ("Elle m'avait dit que ça se passait mal au travail. Elle ne m'a pas donné de noms. "
+                    f"Elle travaillait à {g.label(self.workplace)}.")
             p.story_rumours[sid] = {"kind": "work", "people": []}
             g.record_note(p, "piste", "Un conflit au travail ?", text, g.name(sid), leads=[self.workplace])
-            return text, ["Piste ouverte : trouver des collègues. Témoignage à recouper."]
+            return text, ["Lieu de travail noté dans le carnet."]
         if knowledge == "pressure":
-            people = sorted(self.pressure_people)
-            for target in people:
-                g.reveal(p, target, [], name=True)
-            text = (f"J'ai entendu plusieurs personnes parler de ce problème : {self._names(people)}. "
-                    "Leur pression était réelle. Mais je n'ai vu personne commettre le crime ; leurs horaires restent à vérifier.")
-            p.story_rumours[sid] = {"kind": "pressure", "people": people}
-            g.record_note(p, "piste", "Une pression partagée", text, g.name(sid), people=people,
-                          leads=[f"house_{s}" for s in g.order if s in people])
-            return text, ["Un mobile possible pour plusieurs personnes ; non prouvé."]
-        return "Je préfère que chacun vous explique sa propre histoire. Je ne vais pas désigner quelqu'un au hasard.", []
+            text = {
+                "theft": "Il y a des gens dans le quartier qui doivent de l'argent, et pas qu'un peu. Les créanciers ne sont pas patients. Je n'irai pas raconter leurs histoires à leur place.",
+                "blackmail": "Elle parlait d'un dossier qu'elle allait donner à un avocat. Ça inquiétait du monde. Je préfère ne pas en dire plus.",
+                "revenge": "Il y a eu une humiliation, en public. Certains lui réclamaient des excuses. C'est tout ce que je peux vous dire.",
+            }[self.family]
+            # A vague account reveals no identities, including through lead buttons.
+            p.story_rumours[sid] = {"kind": "pressure", "people": []}
+            g.record_note(p, "piste", "Des dettes dans le quartier ?" if self.family == "theft" else
+                          "Un dossier qui inquiétait ?" if self.family == "blackmail" else "Des excuses réclamées ?",
+                          text, g.name(sid))
+            return text, ["Récit noté · aucune personne nommée."]
+        return self._voice(sid, "no_rumour", ["Non… Je ne vois pas qui. Ça me travaille depuis que je l'ai appris.",
+                          "Je ne sais pas. On se connaissait, mais elle ne me racontait pas tout.",
+                          "Je n'ai entendu parler de rien. Désolé, je ne peux pas vous dire plus."]), []
+
+    def _voice(self, sid, topic, alternatives):
+        return random.Random(f"nexus-voice-v1:{self.game.seed}:{sid}:{topic}").choice(alternatives)
 
     def _knows_victim(self, p, sid):
         return (self.game.case[sid][LinkToVictim] != LinkToVictim.UNKNOWN
@@ -326,22 +378,24 @@ class CaseStory:
         link = g.case[target][LinkToVictim]
         leads = []
         if not self._knows_victim(p, sid) or target not in self.link_contacts[sid] or link == LinkToVictim.UNKNOWN:
-            text = f"Je connais {g.name(target)} de vue, mais je ne sais rien de ses rapports avec la victime. Ça ne veut pas dire qu'il n'y en avait pas."
+            text = (f"{g.name(target)} ? Je connais de vue, mais je ne sais rien de ses rapports avec la victime." if target in self.link_contacts[sid]
+                    else f"{g.name(target)} ? Ce nom ne me dit rien.")
         else:
             street = g.map[f"house_{sid}"][1][0]
             neighbour = g.map[f"house_{target}"][1][0] == street
             basis = "On habite le même quartier ; je les ai vus se fréquenter" if neighbour else "Je les connais de notre entourage ; ils en ont parlé devant moi"
             descriptions = {
                 LinkToVictim.EX: "une ancienne relation amoureuse avec la victime",
+                LinkToVictim.PARTNER: "une relation amoureuse avec la victime, toujours en cours avant sa mort",
                 LinkToVictim.SIBLING: "un lien de famille avec la victime",
                 LinkToVictim.COLLEAGUE: "une relation de travail avec la victime",
                 LinkToVictim.NEIGHBORHOOD: "des rapports de voisinage avec la victime",
             }
-            text = f"{g.name(target)} avait {descriptions[link]}. {basis}. Je peux parler de leur relation, pas de ce qui s'est passé la nuit du crime."
+            text = f"{g.name(target)} ? Oui, {descriptions[link]}. {basis}."
             p.link_witnesses.setdefault(target, set()).add(sid)
             leads = [f"house_{target}"]
             if p.link_claims.get(target) == LinkToVictim.UNKNOWN:
-                text += " Ce récit contredit sa déclaration ; il faudra lui demander pourquoi."
+                text += " C'est ce dont je me souviens, en tout cas."
         title = f"À propos de {g.name(target)}"
         g.record_note(p, "témoignage", title, text, g.name(sid), people=[sid, target], leads=leads)
         g.dialogue_cue(p, sid, text, "reply", question=f"Que savez-vous de {g.name(target)} ?", notes=["Témoignage conservé ; pas une preuve de meurtre."])
@@ -368,7 +422,7 @@ class CaseStory:
             p.story_found.add("camera")
             text = (f"À {hour(self.time + 5)}, une silhouette quitte la scène avec {self.appearance}. Le visage est invisible. "
                     f"Le registre d'équipement et les portraits montrent que {self._names(self.appearance_people)} possèdent cet accessoire. "
-                    "Aucun n'est identifié par la vidéo seule. Croiser ce groupe avec le mobile et le parcours de l'objet.")
+                    "Le visage est trop flou pour reconnaître quelqu'un.")
             for target in self.appearance_people:
                 g.reveal(p, target, [], name=True)
             leads = [f"house_{s}" for s in g.order if s in self.appearance_people]
@@ -381,15 +435,15 @@ class CaseStory:
         p.story_discussed.add((sid, key, len(p.link_witnesses.get(sid, ())) if key == "relationship" else self.context_stamp(p, key)))
         if key == "access":
             text = "Oui, j'avais une clé de ce coffre partagé. Ça ne signifie pas que je connaissais les autres usagers ou leurs affaires. "
-            text += "Vous pouvez venir chez moi consulter mes papiers, plutôt que supposer que j'ai volé quelque chose."
+            text += "Mes papiers sont chez moi. Si vous voulez les regarder, allez-y. Je n'ai rien volé."
             p.invited.add(sid)
             leads = [f"house_{sid}"]
         elif key == "meeting":
-            text = "J'ai reçu cette invitation. Ça ne dit pas où j'étais ensuite. Vous pouvez consulter mes papiers chez moi pour vérifier."
+            text = "Oui, j'ai reçu l'invitation. Vous pouvez regarder mes papiers chez moi, si vous y tenez."
             p.invited.add(sid)
             leads = [f"house_{sid}"]
         elif key == "rival":
-            text = "Oui, ce conflit existait. Mais mon attestation couvre l'heure du meurtre. Vérifiez-la là où elle a été établie."
+            text = "Oui, on avait un conflit. Mais à cette heure-là, j'étais ailleurs. L'attestation est là, vous l'avez."
             leads = []
         elif key == "statement":
             text = "D'accord, ma description était inventée. Je voulais détourner vos questions. Ça ne répond pas encore à votre question sur le meurtre."
@@ -397,7 +451,7 @@ class CaseStory:
         elif key == "relationship":
             link = g.case[sid][LinkToVictim]
             text = (f"D'accord, j'ai caché ce lien : {TRAIT_TEXT[link]}. Je ne voulais pas que notre histoire personnelle devienne publique. "
-                    "Mais cacher une relation ne dit pas où j'étais à l'heure du meurtre. Vérifiez les faits.")
+                    "Je n'avais pas envie que tout le quartier en parle.")
             p.link_claims[sid] = link
             g.reveal(p, sid, [LinkToVictim])
             leads = [f"house_{sid}", "crime_scene"]
@@ -409,18 +463,24 @@ class CaseStory:
                 leads = ["police"] + ([self.cache_place] if self.cache_place and "cache" not in p.story_found else [])
                 g.record_note(p, "reconstitution", "Les pièces convergent", text, g.name(sid), people=[sid], leads=leads)
             else:
-                text = "Ce conflit concerne plusieurs personnes. Il faut encore recouper qui en avait l'occasion et ce que montrent les images ; le mobile seul ne prouve pas le meurtre."
-                missing = required - self.observed(p)
-                leads = list(dict.fromkeys("cctv" if k == "camera" else self.sources[k]["place"] for k in sorted(missing)
-                                           if k == "camera" or not self.sources[k]["place"].startswith("house_")
-                                           or p.knows(g.owner(self.sources[k]["place"]))))
+                text = self._personal_document_reply(sid)
+                leads = []
         else:
-            profile = self.profiles[sid]
-            text = f"Ces papiers sont personnels. Je cherche à {profile['goal']}. Ce n'est pas une raison pour me traiter en meurtrier."
+            text = self._personal_document_reply(sid)
             leads = []
         g.record_note(p, "déclaration", "Réponse à une preuve", text, g.name(sid), people=[sid], leads=leads)
         g.dialogue_cue(p, sid, text, "reply", question="Que répondez-vous à ce document ?", notes=["Déclaration conservée dans les Notes."])
         return [f"{g.name(sid)} — {text}"]
+
+    def _personal_document_reply(self, sid):
+        # Identical construction for guilty/innocent people with the same problem.
+        topic = self.profiles[sid]["goal"]
+        detail = {
+            "rembourser une dette": "Oui, j'ai une dette. Vous avez vu les relances. Je n'arrive plus à penser à autre chose.",
+            "empêcher la divulgation d'un dossier": "Ce dossier me fait peur, oui. J'aurais préféré que personne n'en entende parler.",
+            "obtenir réparation d'un conflit": "J'attendais des excuses. Ça peut vous paraître dérisoire, mais pas à moi.",
+        }.get(topic, "Ce sont mes papiers personnels. Je n'avais pas envie que vous tombiez dessus.")
+        return detail
 
     def view(self, p):
         g = self.game
@@ -466,31 +526,37 @@ class CaseStory:
                                    [self.cache_place] if p.story_resolved and self.cache_place and "cache" not in found else [])
             add("object", "Identifier l'objet caché" if unidentified else "Suivre l'objet disparu",
                 "Un objet marqué a été retrouvé, mais son propriétaire n'est pas encore établi." if unidentified else self.spec["effect"],
-                "Comparer le marquage avec les papiers chez la victime." if unidentified else
-                "Consulter le registre des clés là où l'objet était rangé." if "access" not in found
-                else "L'objet a été retrouvé, mais personne n'est identifié par cette cache. Recouper les clés, le mobile et les images." if "cache" in found
-                else "Plusieurs personnes avaient une clé. Recouper leurs mobiles et les images ; retrouver l'objet n'est pas indispensable.",
+                "Le marquage est noté. Les affaires de la victime sont à son domicile." if unidentified else
+                f"Le registre des doubles de clé est conservé à {g.label(self.spec['relay'])}." if "access" not in found
+                else "L'objet a été retrouvé dans une cache sans nom ni trace exploitable." if "cache" in found
+                else "Le registre cite plusieurs détenteurs de clé. Il ne dit pas qui a ouvert le coffre.",
                 object_destinations, "access" in found)
         if self.access_key in found or "trace" in found or any(r.get("kind") == "pressure" for r in p.story_rumours.values()):
-            people = self.object_people if self.access_key in found else self.pressure_people
-            add("motive", "Comprendre la pression", "Avoir l'occasion ne signifie pas avoir commis le crime.",
-                "Consulter les correspondances : quel problème liait plusieurs personnes à la victime ?" if "trace" not in found
-                else "Le mobile est partagé : il faut encore le recouper avec la chronologie.",
+            people = self.pressure_people if "trace" in found else self.object_people if self.access_key in found else ()
+            subject = {"theft": ("Des dettes dans le quartier", "Plusieurs habitants doivent de l'argent."),
+                       "blackmail": ("Le dossier de la victime", "Un dossier devait être remis à un avocat."),
+                       "revenge": ("Des excuses attendues", "Une humiliation publique a laissé de la rancœur.")}[self.family]
+            if "trace" not in found and not any(r.get("kind") == "pressure" for r in p.story_rumours.values()):
+                subject = ("Pourquoi cette disparition ?", "Un objet a été pris dans le coffre.") if self.spec["object"] else ("Pourquoi ce rendez-vous ?", "La victime avait envoyé plusieurs invitations.")
+            add("motive", subject[0], subject[1],
+                "Pour l'instant, aucun nom n'a été donné." if not people else
+                "Les personnes citées ont des papiers à leur domicile." if "trace" not in found else
+                "Les courriers citent plusieurs personnes. Ils ne racontent pas la nuit du meurtre.",
                 [f"house_{s}" for s in g.order if s in people], "trace" in found)
         if "clock" in found or "trace" in found:
-            add("time", "Replacer une silhouette dans la nuit", "Une fenêtre horaire n'identifie pas une personne.",
-                "Relever le constat extérieur avant de consulter la caméra à la Régie vidéo." if "camera" not in found
-                else "Le visage reste masqué. Plusieurs personnes possèdent l'accessoire visible ; comparer les autres sources.",
+            add("time", "Qui était dans la rue ce soir-là ?", f"La mort est située {self.window}." if "clock" in found else "L'heure de la mort n'est pas encore connue.",
+                "Le rapport de police est sur la scène de crime. Une caméra filme cette rue ; ses enregistrements sont à la Régie vidéo." if "camera" not in found
+                else "Sur la vidéo, on distingue un accessoire, mais pas le visage. Plusieurs habitants possèdent le même.",
                 (["crime_scene"] if "clock" not in found else []) + ["cctv"], "camera" in found)
         if self.work_conflict and ("work" in found or any(r.get("kind") == "work" for r in p.story_rumours.values())):
             add("work", "Des tensions au travail", "Un proche évoque un conflit sans connaître les noms.",
-                "Trouver le planning et des collègues au lieu de travail." if "work" not in found
-                else "Plusieurs collègues partageaient le conflit. Leur demander leurs versions et vérifier les horaires.",
+                "Un planning et les collègues sont rattachés au lieu de travail." if "work" not in found
+                else "Le planning cite plusieurs collègues. Leurs déclarations figurent dans les Notes une fois recueillies.",
                 [self.workplace] if "work" not in found else [f"house_{s}" for s in g.order if s in self.work_conflict], "work" in found)
         if "rival" in found:
-            add("alibi", "Vérifier plutôt que croire", "Une attestation peut disculper une personne, mais elle doit être recoupée.",
-                "Consulter le registre original et son témoin." if self.rival not in p.timeline_verified
-                else "Horaire confirmé loin de la scène. Ce conflit ne suffisait pas à accuser.",
+            add("alibi", f"Où était {g.name(self.rival)} ?", "Une attestation indique une présence ailleurs au moment du meurtre.",
+                f"L'original du registre est conservé à {g.label(self.check_place)}." if self.rival not in p.timeline_verified
+                else "Le registre original confirme sa présence loin du crime.",
                 [self.check_place], self.rival in p.timeline_verified)
         return result
 

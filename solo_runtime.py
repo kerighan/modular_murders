@@ -14,6 +14,7 @@ import queue
 import random
 import threading
 import time
+import uuid
 
 from game import FREE_STARTS, ITEMS, PAID_STARTS, RULES_VERSION, START, Game
 
@@ -21,9 +22,13 @@ SAVE_VERSION = 2
 
 
 class SoloSession:
-    def __init__(self, save_path, seed=42, name="Ada"):
+    def __init__(self, save_path, seed=42, name="Ada", engine="legacy"):
         self.path = Path(save_path)
+        if engine not in ("legacy", "causal"):
+            raise ValueError("moteur inconnu")
+        self.engine = engine
         self.seed, self.name = int(seed), str(name)
+        self.case_id = uuid.uuid4().hex
         self.commands, self.scores, self.messages = queue.Queue(), queue.Queue(), queue.Queue()
         self.closed = threading.Event()
         self.waiting_score = threading.Event()
@@ -78,13 +83,21 @@ class SoloSession:
             self.waiting_score.clear()
 
     def _fresh(self):
-        self.game = Game(self.seed, [self.name], challenge=self._challenge)
+        self.case_id = uuid.uuid4().hex
+        if self.engine == "causal":
+            from causal_game import CausalGame
+            self.game = CausalGame(self.seed, [self.name])
+        else:
+            self.game = Game(self.seed, [self.name], challenge=self._challenge)
         self.equipped = False
         self.legacy_auto_end = 0
 
     def _snapshot(self):
+        if self.engine == "causal":
+            return {"version": SAVE_VERSION, "engine": self.engine, "seed": self.seed, "case_id": self.case_id,
+                    "name": self.name, "equipped": self.equipped, "game": self.game.snapshot()}
         return {
-            "version": SAVE_VERSION, "seed": self.seed, "name": self.name,
+            "version": SAVE_VERSION, "seed": self.seed, "name": self.name, "case_id": self.case_id,
             "rules_version": RULES_VERSION,
             "equipped": self.equipped,
             "items": [sorted(p.items) for p in self.game.players],
@@ -96,7 +109,15 @@ class SoloSession:
     def _restore(self, data):
         if data["version"] not in (1, SAVE_VERSION):
             raise ValueError("version de sauvegarde incompatible")
+        if data.get("engine", "legacy") != self.engine:
+            raise ValueError("Cette sauvegarde appartient à un autre moteur d'enquête")
         self.seed, self.name = int(data["seed"]), str(data["name"])
+        self.case_id = data.get("case_id") or self.case_id
+        if self.engine == "causal":
+            from causal_game import CausalGame
+            self.game = CausalGame.restore(self.seed, self.name, data["game"], data["equipped"])
+            self.equipped = data["equipped"]
+            return
         if data["equipped"]:
             if data.get("rules_version") != RULES_VERSION:
                 raise ValueError("ancienne génération de scénario : une nouvelle enquête est nécessaire")
@@ -130,26 +151,27 @@ class SoloSession:
 
     def _view(self, resumed=False):
         payload = self.game.view(self.game.players[0])
-        payload["solo"] = {"seed": self.seed, "resumed": resumed, "offline": True}
+        payload["solo"] = {"seed": self.seed, "case_id": self.case_id, "resumed": resumed, "offline": True}
         if not self.equipped:
-            payload["setup"] = {"items": ITEMS, "free_starts": FREE_STARTS,
-                                "paid_starts": PAID_STARTS, "slots": 2}
+            payload["setup"] = self.game.setup() if self.engine == "causal" else {
+                "items": ITEMS, "free_starts": FREE_STARTS, "paid_starts": PAID_STARTS, "slots": 2}
         self._emit("view", **payload)
 
     def _handle(self, msg):
         kind = msg.get("type")
         if kind == "restart":
             # Write a fresh, unequipped save: restarting the app retains this seed.
-            self.seed = random.SystemRandom().randrange(1, 2**31)
+            self.seed = random.SystemRandom().randrange(0, 1001)
             self._fresh()
             self._try_save()
             self._emit("reset")
             self._view()
         elif kind == "equip" and not self.equipped:
-            items, start = msg.get("items", []), msg.get("start", START)
+            items, start = msg.get("items", []), msg.get("start", self.game.setup()["default_start"] if self.engine == "causal" else START)
             if not isinstance(items, list) or len(items) > 2 or len(set(items)) != len(items):
                 raise ValueError("choisissez au maximum deux équipements différents")
-            if any(item not in ITEMS for item in items):
+            allowed_items = self.game.setup()["items"] if self.engine == "causal" else ITEMS
+            if any(item not in allowed_items for item in items):
                 raise ValueError("équipement inconnu")
             if start not in self.game.starts(items):
                 raise ValueError("lieu de départ indisponible")
@@ -183,7 +205,10 @@ class SoloSession:
             resumed = False
             if self.path.exists():
                 try:
-                    self._restore(json.loads(self.path.read_text(encoding="utf-8")))
+                    saved = json.loads(self.path.read_text(encoding="utf-8"))
+                    self._restore(saved)
+                    if "case_id" not in saved:
+                        self._try_save()  # Persist the identity when upgrading a v16 save.
                     resumed = self.equipped
                 except Exception as exc:
                     # Keep the old bytes for recovery instead of overwriting them.
@@ -216,8 +241,9 @@ def _stdio():
     parser = argparse.ArgumentParser()
     parser.add_argument("--save", required=True)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--engine", choices=("causal", "legacy"), default="causal")
     args = parser.parse_args()
-    session = SoloSession(args.save, args.seed)
+    session = SoloSession(args.save, args.seed, engine=args.engine)
     def output():
         while not session.closed.is_set():
             try:

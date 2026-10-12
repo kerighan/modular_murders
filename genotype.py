@@ -47,6 +47,7 @@ class LinkToVictim(Enum):
     COLLEAGUE = 2
     EX = 4
     UNKNOWN = 5
+    PARTNER = 6
 
 
 class Alibi(Enum):
@@ -63,7 +64,7 @@ TRAITS = {
     Height: ("height", [3, 5, 3]),
     BloodType: ("blood_type", [6, 4, 2, 1]),
     Hand: ("hand", [8, 2]),
-    LinkToVictim: ("link", [3, 5, 2, 3, 2]),
+    LinkToVictim: ("link", [3, 5, 2, 3, 2, 2]),
 }
 
 # every trait value, flattened: the feature nodes of the case graph

@@ -54,7 +54,7 @@ class HeightClue(Clue):
     trait, name = Height, "height"
 
 
-KNOWN = [LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD]
+KNOWN = [LinkToVictim.SIBLING, LinkToVictim.COLLEAGUE, LinkToVictim.NEIGHBORHOOD, LinkToVictim.PARTNER]
 
 CLUES = [
     GenderClue(Location.WITNESS, "J'ai croisé quelqu'un qui sortait en courant de chez la victime."),

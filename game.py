@@ -22,13 +22,22 @@ from suspect import Case
 from narrative import CaseStory
 
 AP = 3  # action points per turn
-RULES_VERSION = 9  # Seed replay is valid only with the same scenario generator.
+RULES_VERSION = 13  # Current-partner trait changes seeded cases; never replay v12 as v13.
 PENALTY = 2  # turns lost on a wrong accusation
 QUESTIONS_PER_INTERROGATION = 3
 ROUTINE_HOME = (1, 4)  # turns spent at home per cycle, drawn once per suspect: homebodies and night owls
 ROUTINE_OUT = (1, 4)  # turns spent at the hangout per cycle
 ALIBI_ODDS = 2  # a bystander remembers an innocent with 1 chance in ALIBI_ODDS; the murderer never
-BYSTANDER = {"bar": "Le barman", "den": "Le croupier", "cabaret": "L'ouvreuse", "hospital": "L'infirmière de garde"}
+BYSTANDER = {"bar": "Le barman", "den": "Le croupier", "cabaret": "L'ouvreuse", "hospital": "L'infirmière de garde", "restaurant": "Le serveur"}
+SERVICE_STAFF = {
+    "restaurant": ("Le serveur", "cheveux noirs", -27, {"verify", "check_timeline"}),
+    "bar": ("Le barman", "cheveux noirs", -21, {"verify", "check_timeline"}),
+    "den": ("Le croupier", "cheveux blonds", -22, {"verify", "check_timeline"}),
+    "cabaret": ("L'ouvreuse", "cheveux roux", -23, {"verify", "check_timeline"}),
+    "hospital": ("L'infirmière de garde", "cheveux noirs", -24, {"verify", "file", "lab", "victim_file", "check_timeline"}),
+    "police": ("Le commissaire", "cheveux blonds", -25, {"authorize", "record", "accuse", "check_timeline"}),
+    "cctv": ("La technicienne vidéo", "cheveux roux", -26, {"check_timeline"}),
+}
 ITEMS = {
     "crowbar": "Pied de biche : ouvre les portes fermées",
     "forensic_kit": "Kit médico-légal : analyse le sang sur place",
@@ -39,7 +48,7 @@ ITEMS = {
     "contact_hospital": "Contact à l'hôpital : commencer sur place, et 4 dossiers médicaux au lieu de 2",
     "victim_key": "Clé de la victime : commencer chez elle, porte ouverte",
 }
-FREE_STARTS = ["victim_street", "alley", "bar", "cabaret", "den"]  # never the crime scene: too good a spot
+FREE_STARTS = ["victim_street", "alley", "bar", "cabaret", "den", "restaurant"]  # never the crime scene: too good a spot
 PAID_STARTS = {"police": "contact_police", "hospital": "contact_hospital", "victim_house": "victim_key"}  # place -> item
 QUESTIONS = {
     "alibi": "Où étiez-vous le soir du meurtre ?",
@@ -48,7 +57,7 @@ QUESTIONS = {
     "grudge": "Qui aurait pu lui en vouloir ?",
     "life": "Qu'est-ce qui vous préoccupe en ce moment ?",
 }
-NIGHT_TEXT = {"bar": "au Néon Bleu", "den": "au Tripot", "cabaret": "au Palace", "hospital": "à l'hôpital", "home": "chez moi"}
+NIGHT_TEXT = {"bar": "au Néon Bleu", "den": "au Tripot", "cabaret": "au Palace", "hospital": "à l'hôpital", "restaurant": "au Comptoir", "home": "chez moi"}
 HOME_RATE = .35  # chance an innocent spent the night at home, where nobody can vouch for them
 RECALL = .6  # chance someone remembers a given person who was there with them
 GOSSIP_WEIGHT = 2  # how much more often rumours point at the murderer than at any innocent
@@ -120,6 +129,8 @@ class Player:
         self.link_witnesses = {}
         self.people_discussed = set()
         self.invited = set()
+        self.thought_topics = set()  # private presentation, never certified evidence
+        self.scenes_seen = set()  # private one-shot exchanges, restored by replay
 
     def knows(self, sid, trait=None):
         """Does the player know this trait of the suspect, or without a trait, their name?"""
@@ -458,6 +469,52 @@ class Game:
         lit windows on that street)}. The city is small and word travels: everyone sees it."""
         return {q: (len(self.suspects_at(q)), len(self.lit(q))) for q in self.map if self.owner(q) is None}
 
+    def presence_view(self, p):
+        """Public city-life radar: counts everywhere, only learned identities.
+
+        Like glance's public/lit-house counts; never leaks unseen faces, traits,
+        relationships, guilt or another detective's knowledge. Service staff are
+        not counted as suspects. Positions change only during the NPC phase.
+        """
+        places, districts = {}, {}
+        for place in self.map:
+            people = [{"id": sid, "name": self.name(sid) if p.knows(sid) else None,
+                       "look": glimpse(self.case[sid]) if all(p.knows(sid, trait) for trait in FAR_TRAITS) else "",
+                       "known": p.knows(sid)} for sid in self.suspects_at(place)]
+            places[place] = {"count": len(people), "people": people}
+            region = self.map[place][1][0] if self.owner(place) is not None else place
+            district = districts.setdefault(region, {"count": 0, "people": []})
+            district["people"].extend(people)
+            district["count"] += len(people)
+        for district in districts.values():
+            district["people"].sort(key=lambda person: self.order.index(person["id"]))
+        return {"places": places, "districts": districts}
+
+    def arrival_scene(self, p):
+        """Translate a provider scene to public, client-neutral speaker beats.
+
+        Reading a view never consumes the scene. A free listen action records
+        consumption, so re-entry, restart and save replay cannot repeat it.
+        """
+        if not self.story or not hasattr(self.story, "scenes_at") or self.pending or self.winner or p is not self.player:
+            return None
+        people = self.suspects_at(p.place)
+        for scene in self.story.scenes_at(p.place, people):
+            if scene["id"] in p.scenes_seen:
+                continue
+            if len(set(scene["actors"])) < 2 or not set(scene["actors"]) <= set(people):
+                continue
+            if any(beat["actor"] not in scene["actors"] for beat in scene["beats"]):
+                continue
+            beats = [{"person": {"id": beat["actor"], "name": self.name(beat["actor"]) if p.knows(beat["actor"]) else None,
+                                 "look": glimpse(self.case[beat["actor"]])}, "text": beat["text"]}
+                     for beat in scene["beats"]]
+            if not beats:
+                continue
+            return {"id": scene["id"], "title": "Une conversation à " + self.label(p.place),
+                    "beats": beats, "people": list(scene["actors"]), "key": ["listen", scene["id"]]}
+        return None
+
     def progress(self, p):
         """How far a detective is, in numbers the scoreboard can show to everyone without
         giving the content away: proven facts, trusted words, suspects ruled out, candidates left."""
@@ -521,6 +578,8 @@ class Game:
                            "searched": q in p.exhausted, "lit": self.owner(q) is not None and bool(self.suspects_at(q))}
                        for q in self.map},
             "glance": {q: list(v) for q, v in self.glance(p).items()},
+            "presence": self.presence_view(p),
+            "arrival_scene": self.arrival_scene(p),
             "options": list(options.items()),
             "routes": self.navigation_routes(p, options),
             "pending": self.pending and self.name(self.pending["who"]),
@@ -530,6 +589,9 @@ class Game:
             "leads": self.story.leads_view(p) if self.story else [],
             "present": [{"id": s, "name": self.name(s) if p.knows(s) else None, "look": glimpse(self.case[s])}
                         for s in self.suspects_at(p.place)],
+            "staff": self.staff_view(p, options),
+            "fixtures": self.fixture_view(p, options),
+            "doors": self.doors_view(p, options),
             "detectives": [{"name": q.name, "place": q.place, "you": q is p} for q in self.players],
             "can_try_code": bool(self.pocket(p) and not p.unlocked and not self.pending),
             "facts": [fact_label(f) for f in p.facts], "trusted": [fact_label(f) for f in facts - p.facts],
@@ -554,6 +616,62 @@ class Game:
         region = self.map[place][1][0]
         return {"place": place, "region": region, "label": self.label(place),
                 "region_label": self.label(region)}
+
+    def staff_view(self, p, options):
+        """Public service characters, never members of the suspect population."""
+        if p.place not in SERVICE_STAFF:
+            return []
+        name, look, portrait_id, kinds = SERVICE_STAFF[p.place]
+        return [{"id": f"staff:{p.place}", "name": name, "look": look,
+                 "portrait_id": portrait_id, "service": True,
+                 "actions": [(key, label) for key, label in options.items() if key[0] in kinds]}]
+
+    def fixture_view(self, p, options):
+        """Every place action belongs to a visible person or object."""
+        fixtures = []
+        descriptions = {
+            "crime_scene": ("Traces sur le sol", "blood"), "alley": ("Poubelles", "trash"),
+            "hospital": ("Table d'examen · morgue", "morgue"), "cctv": ("Terminal vidéo", "terminal"),
+            "victim_house": ("Bureau de la victime", "desk"), "bar": ("Coffre & papiers", "safe"),
+            "den": ("Coffre & papiers", "safe"), "cabaret": ("Papiers du Palace", "desk"),
+        }
+        searches = [(key, label) for key, label in options.items() if key[0] in {"search", "investigate"}]
+        if searches:
+            title, prop = descriptions.get(p.place, ("Affaires personnelles", "desk"))
+            fixtures.append({"id": "object:search", "name": title, "prop": prop, "object": True, "actions": searches})
+        phone = [(key, label) for key, label in options.items() if key[0] in {"unlock", "try_code"}]
+        if phone:
+            fixtures.append({"id": "object:phone", "name": "Téléphone récupéré", "prop": "phone", "object": True, "actions": phone})
+        return fixtures
+
+    def doors_view(self, p, options):
+        if self.owner(p.place) is not None:
+            return []
+        doors = []
+        person_kinds = {"ring", "observe", "confront", "talk_about", "interrogate"}
+        for place in self.map[p.place][1]:
+            sid = self.owner(place)
+            if sid is None:
+                continue
+            occupant = sid in self.suspects_at(place)
+            actions = [(key, label) for key, label in options.items()
+                       if key == ("move", place) or (occupant and len(key) > 1 and key[0] in person_kinds and key[1] == sid)]
+            doors.append({"place": place, "label": self.place_label(p, place), "door": True,
+                          "id": sid, "name": self.name(sid) if p.knows(sid) else None,
+                          "look": glimpse(self.case[sid]) if sid in p.known else "",
+                          "occupied": occupant, "actions": actions,
+                          "reason": "Plus de PA pour agir ce tour-ci." if p.ap == 0 else
+                                    "La personne a déjà répondu à vos questions et n'a pas autorisé l'entrée." if occupant else
+                                    "Aucune action disponible à cette porte pour le moment."})
+        return doors
+
+    def staff_cue(self, p, text, question=None, notes=()):
+        staff = self.staff_view(p, {})
+        if staff:
+            self.dialogue_cues[p.name] = {
+                "id": len(self.history) + 1, "stage": "reply", "text": text,
+                "question": question, "notes": list(notes), "person": staff[0],
+            }
 
     def conversation_view(self, p):
         cue = self.dialogue_cues[p.name]
@@ -606,8 +724,13 @@ class Game:
                         o[key] = label.removesuffix(" (1 PA)")
             o[("stop",)] = "Laisser partir"
             return o
-        if self.winner or p.ap <= 0:
+        if self.winner:
             return {("end",): "Terminer le tour"}
+        scene = self.arrival_scene(p)
+        if scene:
+            o[tuple(scene["key"])] = "Écouter la conversation · sans PA"
+        if p.ap <= 0:
+            return {**o, ("end",): "Terminer le tour"}
         streets = self.map[p.place][1]
         occupied = {h for h in self.map if self.owner(h) is not None and self.suspects_at(h)
                     and self.owner(h) not in p.invited}  # entering an occupied home needs explicit consent
@@ -693,7 +816,7 @@ class Game:
         p, self._rolls = self.player, []
         self.dialogue_cues[p.name] = None
         events = getattr(self, "do_" + key[0])(p, *key[1:])
-        if key[0] not in ("move", "walk", "end", "investigate", "confront", "talk_about", "check_timeline", "stop"):
+        if key[0] not in ("move", "walk", "end", "investigate", "confront", "talk_about", "check_timeline", "stop", "listen"):
             cue = self.dialogue_cues[p.name]
             if key[0] == "ask":
                 kind = "soupçon" if key[1] == "grudge" else "déclaration"
@@ -712,6 +835,11 @@ class Game:
                                   "file": "Dossier médical", "record": "Casier", "observe": "Observation",
                                   "accuse": "Conclusion"}.get(key[0], "Avancée de l'enquête"),
                                      "\n".join(note_events), self.place_label(p, p.place))
+        cue = self.dialogue_cues[p.name]
+        if cue and cue.get("thought"):
+            thought = cue["thought"]["text"]
+            self.record_note(p, "réflexion", "Mon impression", thought, p.name)
+            events.append(f"{p.name} (pensée) — {thought}")
         self.history.append((p.name, key, self._rolls))
         if self.auto_end and p.ap <= 0 and key[0] != "end" and not self.winner and not self.pending:
             events += self.do_end(p)
@@ -725,6 +853,18 @@ class Game:
         p.ap -= cost - 1
         p.place = path[-2]
         return [f"Trajet à pied : {self.label(place)} ({cost} PA)."] + self.do_move(p, place)
+
+    def do_listen(self, p, scene_id):
+        scene = self.arrival_scene(p)
+        if not scene or scene["id"] != scene_id:
+            raise ValueError("Conversation unavailable")
+        p.scenes_seen.add(scene_id)
+        lines = [f"{beat['person']['name'] or beat['person']['look'].capitalize()} — {beat['text']}" for beat in scene["beats"]]
+        self.record_note(p, "conversation", scene["title"], "\n".join(lines), self.label(p.place), people=scene["people"])
+        self.dialogue_cues[p.name] = {"id": len(self.history) + 1, "stage": "scene", "text": scene["beats"][0]["text"],
+                                     "person": scene["beats"][0]["person"], "question": None, "notes": [],
+                                     "title": scene["title"], "beats": scene["beats"]}
+        return ["Vous surprenez une conversation."] + lines
 
     def do_investigate(self, p):
         p.ap -= 1
@@ -821,7 +961,7 @@ class Game:
             p.sneaked.add(p.place)
             reachable = [e for e in pool if not e.portable]
             if not reachable:
-                return ["Il y a quelque chose là-bas, sous le ruban. Impossible de l'atteindre sans se faire repérer."]
+                return ["Des objets sont derrière le ruban de police. Il me faut une autorisation du commissariat pour les récupérer."]
         e = self.rng.choice(reachable if sneaking else pool)
         group = [x for x in pool if x.label == e.label and x.portable == e.portable]  # one object, every clue it carries
         for x in group:
@@ -839,14 +979,25 @@ class Game:
         else:
             for x in group:
                 ev += [x.text] + self.examine(p, x)
-        return documents + ev + ["Il reste des objets à examiner ici." if len(pool) > len(group) else "Vous avez fait le tour des lieux."]
+        if len(pool) > len(group):
+            remaining = ("D'autres objets sont derrière le ruban. Il me faut une autorisation du commissariat pour les récupérer."
+                         if sneaking else "La fouille n'est pas terminée : vous pouvez encore examiner ce lieu (1 PA).")
+        else:
+            remaining = "Vous avez fait le tour des lieux."
+        return documents + ev + [remaining]
 
     def examine(self, p, e):
         if e.blood:
+            if e.fact in p.facts:
+                return [f"Le groupe sanguin {TRAIT_TEXT[e.fact]} est déjà connu. Ce prélèvement ne m'apprendra rien de plus."]
             if "forensic_kit" in p.items:
                 return ["Vous sortez le kit médico-légal et analysez le sang sur place."] + self.learn(p, e)
+            if p.place == "hospital":
+                return ["Le prélèvement est analysé sur place au laboratoire de l'hôpital."] + self.learn(p, e)
+            if any(sample.id == e.id for sample, _, _ in self.lab):
+                return ["Ce prélèvement est déjà au laboratoire ; son résultat n'est pas encore disponible."]
             self.lab.append((e, p.name, self.tick + 1))
-            return ["Sans kit, l'échantillon part au labo : rendez-vous à l'hôpital au prochain tour."]
+            return ["L'échantillon est envoyé au laboratoire de l'hôpital. Résultat disponible au prochain tour."]
         return self.learn(p, e)
 
     def learn(self, p, e):
@@ -943,6 +1094,16 @@ class Game:
         self.pending["dialogue"].append((q, line))
         self.pending["left"] -= 1
         self.dialogue_cue(p, s, line, "reply", question=QUESTIONS[q], notes=ev)
+        if q == "grudge" and s in p.story_rumours:
+            kind = p.story_rumours[s]["kind"]
+            if kind not in p.thought_topics:
+                p.thought_topics.add(kind)
+                thought = ("Des ennuis au travail… Elle n'en disait peut-être pas autant à tout le monde." if kind == "work" else
+                           {"theft": "Des dettes, donc. Pour l'instant, je n'ai que des bruits de quartier.",
+                            "blackmail": "Ce dossier faisait peur. Qu'est-ce qu'elle comptait révéler ?",
+                            "revenge": "Des excuses attendues… Il reste quelque chose de cette histoire."}[self.story.family])
+                self.dialogue_cues[p.name]["thought"] = {"text": thought, "person": {
+                    "name": p.name, "id": self.players.index(p), "look": "", "detective": True}}
         ev = [f"{self.name(s)} — {line}"] + ev
         if self.pending["left"] == 0:
             ev.append(f"{self.name(s)} s'éloigne.")
@@ -964,13 +1125,13 @@ class Game:
         if self.night[s] == "home":
             p.alibis.setdefault(s, None)
             she = self.case[s][Gender] is Gender.FEMALE
-            return (f"Chez moi, seul{'e' if she else ''}. Personne pour le confirmer, je sais.",
+            return (f"Chez moi. Seul{'e' if she else ''}.",
                     [f"Noté : chez {'elle' if she else 'lui'} ce soir-là, invérifiable."])
         p.alibis.setdefault(s, False)
         names = ", ".join(self.name(t) for t in recalled)
         where = NIGHT_TEXT[self.night[s]]
         if names:
-            text = f"Le soir du meurtre, j'étais {where}, avec {names}. Il y avait d'autres gens, je ne saurais pas dire qui."
+            text = f"Le soir du meurtre, j'étais {where}, avec {names}. Il y avait peut-être d'autres gens."
         elif self.company(s):
             text = f"Le soir du meurtre, j'étais {where}. Il y avait du monde, mais je ne me souviens de personne en particulier."
         else:
@@ -992,7 +1153,7 @@ class Game:
         elif held:
             claims, text = [e.fact for e in held], " ".join(f"{e.text} {statement(e.fact)}" for e in held)
         else:
-            return "Je n'ai aucun témoignage à vous donner sur la scène.", []
+            return "Cette nuit-là… Je n'ai rien à vous raconter.", []
         p.heard.setdefault(s, set()).update(claims)
         return text, [f"Témoignage noté : {', '.join(fact_label(f) for f in claims)}."]
 
@@ -1021,11 +1182,15 @@ class Game:
         if s != 0 and self.alibi_ok[s]:
             p.alibis[s] = True
             p.cleared.add(s)
-            return [f"{who} : « {self.name(s)} ? Oui, toute la soirée, jusqu'à la fermeture. »",
-                    f"L'alibi de {self.name(s)} tient. Ce qu'{'elle' if self.case[s][Gender] is Gender.FEMALE else 'il'} vous a dit est fiable."]
+            line = f"{self.name(s)} ? Oui, toute la soirée, jusqu'à la fermeture. Je m'en souviens bien."
+            note = f"Présence de {self.name(s)} confirmée à l'heure du meurtre."
+            self.staff_cue(p, line, question=f"Vous avez vu {self.name(s)} ce soir-là ?", notes=[note])
+            return [f"{who} : « {line} »", note]
         p.alibis[s] = None
-        return [f"{who} : « {self.name(s)} ? Il y avait du monde ce soir-là... je ne saurais pas dire. »",
-                f"L'alibi de {self.name(s)} n'est pas confirmé. Ça ne prouve rien, mais c'est noté."]
+        line = f"{self.name(s)} ? Il y avait du monde ce soir-là… Non, je ne me souviens pas."
+        note = f"Pas de confirmation pour {self.name(s)}."
+        self.staff_cue(p, line, question=f"Vous avez vu {self.name(s)} ce soir-là ?", notes=[note])
+        return [f"{who} : « {line} »", note]
 
     def do_file(self, p, s):
         p.ap -= 1
@@ -1050,6 +1215,7 @@ class Game:
         p.ap -= 1
         p.authorized = True
         self.broadcast(p, f"{p.name} obtient une autorisation.")
+        self.staff_cue(p, "Voilà votre autorisation. Elle couvre la scène, les vidéos et nos archives. Gardez-la sur vous.")
         return ["Le commissaire vous ouvre la scène de crime, les enregistrements et les casiers."]
 
     def do_accuse(self, p, s):

@@ -150,7 +150,8 @@ def test_narrative_is_resolvable_without_recovering_or_tracing_a_handoff(seed):
 
 
 def test_cache_is_anonymous_and_does_not_reveal_the_placer_or_resolve_the_case():
-    g = Game(42, players=("Ada", "Bob"))
+    # Explicit hidden-object fixture in rules 13, not a guarantee about seed 42.
+    g = Game(6, players=("Ada", "Bob"))
     g.equip(0, ["taxi", "crowbar"])
     g.start()
     a, b = g.players

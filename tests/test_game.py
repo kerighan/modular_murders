@@ -218,7 +218,7 @@ def test_descriptions_are_truthful_or_partial_not_a_unique_liar_shortcut():
             intent, _ = g.answer_seen(p, s)
             if s == 0:
                 assert g.lie is None and 0 not in p.heard
-                assert "aucun témoignage" in intent
+                assert "rien à vous raconter" in intent
             elif g.testimony(s):
                 assert all(f in g.case.facts for f in p.heard[s])
         assert all(e.who != 0 and e.place is None for e in g.evidence if e.person)

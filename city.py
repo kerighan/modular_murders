@@ -8,7 +8,7 @@ GRID = [
     ["alley", "crime_scene", "victim_street", None, "victim_house"],
     ["cctv", "bar", "police", None, None],
     ["cabaret", "den", "hospital", None, None],
-    [None, None, None, None, None],
+    [None, None, "restaurant", None, None],
 ]
 # Empty cells can be occupied by a neighboring building's extended footprint.
 # The suspended bridge connects the residential places across the enlarged parcel.
@@ -17,6 +17,7 @@ LABELS = {
     "crime_scene": "Scène de crime", "alley": "Ruelle", "victim_street": "Rue Verlaine",
     "victim_house": "Chez la victime", "police": "Commissariat", "hospital": "Hôpital",
     "bar": "Le Néon Bleu", "cctv": "Régie vidéo", "cabaret": "Le Palace", "den": "Le Tripot",
+    "restaurant": "Le Comptoir",
 }
 
 
@@ -39,8 +40,8 @@ def _streets(grid=None):
 
 STREETS = _streets()
 START = "victim_street"  # default start, right outside the crime scene
-HANGOUTS = ["bar", "cabaret", "den", "hospital"]
-HANGOUT_WEIGHTS = [4, 3, 3, 1]  # the hospital is nobody's idea of a night out, but someone works there
+HANGOUTS = ["bar", "cabaret", "den", "hospital", "restaurant"]
+HANGOUT_WEIGHTS = [4, 3, 3, 1, 3]  # the hospital is nobody's idea of a night out, but someone works there
 RESIDENTIAL = ["victim_street", "alley", "cabaret", "den"]
 
 LOCKED = {"victim_house"}  # plus every suspect's house
@@ -67,6 +68,7 @@ TRAIT_TEXT = {
     Hand.RIGHT: "droite", Hand.LEFT: "gauche",
     LinkToVictim.SIBLING: "famille", LinkToVictim.NEIGHBORHOOD: "voisinage", LinkToVictim.COLLEAGUE: "collègue",
     LinkToVictim.EX: "ex", LinkToVictim.UNKNOWN: "inconnu",
+    LinkToVictim.PARTNER: "partenaire amoureux",
 }
 LINK_QUOTES = {
     LinkToVictim.SIBLING: "On a grandi ensemble, c'était ma famille.",
@@ -74,6 +76,7 @@ LINK_QUOTES = {
     LinkToVictim.COLLEAGUE: "On travaillait ensemble.",
     LinkToVictim.EX: "On a été ensemble. C'est fini depuis longtemps.",
     LinkToVictim.UNKNOWN: "Je ne connaissais pas cette personne.",
+    LinkToVictim.PARTNER: "On était ensemble. C'était mon amour.",
 }
 # what a passer-by sees from the street, vs. what needs a closer look
 FAR_TRAITS = [Gender, Height, HairColor]
@@ -89,6 +92,7 @@ LINK_SENTENCE = {
     LinkToVictim.COLLEAGUE: "est probablement un collègue de la victime",
     LinkToVictim.EX: "est probablement un ex de la victime",
     LinkToVictim.UNKNOWN: "ne connaissait probablement pas la victime",
+    LinkToVictim.PARTNER: "était en couple avec la victime",
 }
 
 
@@ -121,6 +125,8 @@ def statement(fact):
 
 # what gives the dominant hand away, depending on where you meet them
 HAND_SCENES = {
+    "restaurant": ["tient sa fourchette de la main {}", "verse de l'eau de la main {}",
+                   "replie sa serviette de la main {}"],
     "bar": ["tient son verre de la main {}", "fait tourner un briquet dans sa main {}", "signe l'ardoise de la main {}",
             "lance les dés sur le comptoir de la main {}"],
     "den": ["pousse ses jetons de la main {}", "abat ses cartes de la main {}", "fait rouler les dés de la main {}",
@@ -164,6 +170,7 @@ SEARCH_DEFAULT = ("Fouiller les lieux", "Vous trouvez")
 
 # said once, the first time a player gets there
 PLACE_HINTS = {
+    "restaurant": "Cuisine ouverte, tables serrées et lumière ambrée. On s'attarde au Comptoir après le travail.",
     "police": "Ici on demande les autorisations, on consulte les casiers, et on accuse quand on est sûr : une erreur coûte 2 tours.",
     "hospital": "La morgue, et les dossiers médicaux des suspects si l'infirmière se laisse convaincre.",
     "crime_scene": "Sans autorisation, une seule fouille discrète, et rien de ce qui s'emporte.",

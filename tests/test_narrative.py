@@ -10,7 +10,9 @@ from solo_runtime import SoloSession
 from test_solo import receive
 
 
-def game(seed=42, players=("Ada",)):
+def game(seed=1, players=("Ada",)):
+    # Explicit object-case fixture with a grounded pressure speaker in rules 13.
+    # Seed 42 now legitimately produces a different family after partner sampling.
     g = Game(seed, players=players, challenge=lambda *_: 1.0)
     g.equip(0, ["taxi", "crowbar"])
     g.start()
@@ -92,9 +94,13 @@ def test_grounded_testimony_points_at_a_shared_problem_not_a_random_individual()
     g = game()
     speaker = next(s for s in range(g.n) if g.story.knowledge[s] == "pressure")
     p = g.player
-    _, notes = g.answer_grudge(p, speaker)
-    assert "non prouvé" in notes[0]
-    assert len(p.story_rumours[speaker]["people"]) >= 2
+    before = set(p.names)
+    text, notes = g.answer_grudge(p, speaker)
+    assert "aucune personne nommée" in notes[0]
+    assert p.story_rumours[speaker]["people"] == []
+    assert p.names == before
+    assert all(g.name(s) not in text for s in g.story.pressure_people)
+    assert next(lead for lead in g.story.leads_view(p) if lead["id"] == "motive")["destinations"] == []
     assert not p.facts and not p.heard and not p.cleared
 
 
@@ -201,7 +207,7 @@ def test_second_loom_writer_is_refused_without_damaging_the_case(tmp_path):
     path = str(tmp_path / "exclusive.loom")
     first = Store(path)
     try:
-        first.save("42", game())
+        first.save("42", game(seed=42))
         with pytest.raises(DatabaseLockedError):
             Store(path)
         assert first.load("42").seed == 42
@@ -270,6 +276,6 @@ def test_unknown_relationships_are_not_invented_and_unknown_targets_not_selectab
     assert ("talk_about", speaker, target) not in g.options()
     g.reveal(p, target, [], name=True)
     events = g.play(("talk_about", speaker, target))
-    assert "je ne sais rien" in events[0]
+    assert "Ce nom ne me dit rien" in events[0]
     assert target not in p.link_witnesses
     assert not p.facts and not p.cleared

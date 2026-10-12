@@ -1,5 +1,34 @@
 # Passation : client Godot
 
+## Fils d'enquête, registres, accusation libre — moteur v4 (12 octobre 2026, côté backend)
+
+Changements de règles dans `scenario_play.py`, à répercuter dans le client quand vous voudrez :
+
+- **`view["threads"]`** (via `scenario_threads.guide`) : trois fils, Le signalement, Les emplois du
+  temps, Le matériel, chacun avec ses étapes `done / next / later`, l'étape suivante en clair,
+  et en tête `remaining`, `accusable`, `missing`, `deadline`, `time_left`, `mistakes`.
+  Calculé uniquement sur l'état public du joueur ; symétrique entre candidats. Même donnée
+  que la commande CLI `fils`. À afficher comme une page « Pelote » ou l'onglet Pistes.
+- **Les registres vouchent** : le personnel cite spontanément une partie des clients (mémoire
+  partielle, tirée par seed) ; une fois le crime daté, ces personnes sont hors de cause sans
+  rencontre ni vérification (`session.register_entries()`, `alibi_state` renvoie `confirmed`).
+  Les autres se vérifient comme avant. Textes de registre modifiés → `VERSION = causal-3d-v4`,
+  nouvelle enquête requise.
+- **Rencontrer quelqu'un livre sa soirée** : `meet:X` révèle `profile:X` et `evening:X`.
+  `interview:X` existe toujours (relecture gratuite côté adaptateur).
+- **Fiches du commissariat** : seulement pour les personnes dont le nom a été lu ou entendu
+  (`named_people()`), comme dans le client. `session.batches()` propose « Consulter les fiches
+  de … » et « Vérifier les récits de … » en une visite ; la CLI les affiche, l'adaptateur peut
+  les reprendre ou garder les actions unitaires.
+- **Mode libre** : `PlaySession(case, skills, strict=False, difficulty="facile|normal|difficile")`.
+  Échéance en minutes (`session.deadline`, `time_left`), calculée depuis le fil le plus court ;
+  accusation jamais refusée : une erreur coûte 90 minutes et met l'accusé hors de cause
+  (`session.cleared`, `mistakes`), la bonne clôt l'affaire même sans agenda. Le dépassement
+  de l'échéance clôt l'affaire (journal `closed`). `strict=True` reste le défaut de
+  `causal_game.py` : à basculer quand l'interface d'accusation et le compte à rebours existeront.
+
+Audit : `python scenario_threads.py --count 200` donne les longueurs par famille.
+
 ## Séparation des personnages et indices au Néon Bleu — v23 (12 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v23.apk`, versionCode 23 / `0.23-causal`.

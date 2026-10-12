@@ -22,9 +22,16 @@ Solo v11 adds district/place presence and one-shot, multi-speaker arrival exchan
 Experimental **new causal generator**, playable separately from the legacy game:
 
 ```bash
-python scenario_sampler.py --play --seed 7 --skills fingerprints,search
-python scenario_playtest.py --seed 0 --count 20
+python scenario_play.py --seed 7 --skills fingerprints,search   # against the clock, accuse at your own risk
+python scenario_play.py --seed 7 --classique                     # original rules: no deadline, file must be complete
+python scenario_playtest.py --seed 0 --count 20                  # blind bot
+python scenario_threads.py --count 200                           # length of each proof family per case
 ```
+
+In the CLI, `fils` lays out the three investigation threads (signalement, emplois du
+temps, matériel) with the next concrete step of each, computed from public knowledge
+only. Venue staff vouch unprompted for some of their guests; police records are
+consulted in one visit for everybody you can name; verifications at a venue are one visit.
 
 Real relationships, bounded conversations, home correspondence/photos, a victim's
 last plan, local camera/hour queries, searchable district bins, and optional

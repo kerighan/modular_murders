@@ -136,7 +136,9 @@ def test_context_threads_do_not_leak_unread_correspondence_or_auto_mark_suspects
     s.do("meet:" + pid)
     s.ask_context(pid, "motive")
     thread = next(r for r in s.inquiry_threads() if r["person"] == pid)
-    assert thread["state"] == "open" and thread["destination"] is None
+    # Meeting someone includes their own evening story, so the venue they named is known.
+    verification = next((a for a in case.plan.actions if a.id == "verify:" + pid), None)
+    assert thread["state"] == "open" and thread["destination"] == (verification.place if verification else None)
     assert thread["details"] == [s.journal[-1]["text"]]
     assert s.marks == {} and s.remaining() == case.plan.population
 

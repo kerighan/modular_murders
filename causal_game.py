@@ -12,9 +12,10 @@ from scenario_play import PlaySession, clock, sample_playable, SERVICE_PARENTS
 from scenario_access import next_day_routines
 from scenario_means import Method
 from scenario_evening import spoken_time
+from scenario_threads import guide
 
 
-VERSION = "causal-3d-v3"
+VERSION = "causal-3d-v4"  # registers vouch for named guests; new investigations required
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
          "search": "Fouille minutieuse · examiner les objets plus rapidement",
          "rapport": "Contact humain · recueillir les témoignages plus rapidement",
@@ -863,7 +864,7 @@ class CausalGame:
                 "scene_has_blood": any(t.kind.value == "victim_blood" for t in self.case.crime.traces),
                 "crime_site": {"place": self.case.crime.scene, "region": self.parents.get(self.case.crime.scene, self.case.crime.scene), "district": labels[self.case.crime.scene], "outdoors": self.case.crime.scene in self.outdoors},
                 "body_location": "morgue" if body_transferred else self.case.crime.scene,
-                "crime_timing": timing, "timeline": s.timeline(),
+                "crime_timing": timing, "timeline": s.timeline(), "threads": guide(s),
                 "glance": {q: [[r["id"] for place, rows in present_by_place.items() if self.homes.get(place, place) == q for r in rows], []] for q in self.roots},
                 "presence": presence, "present": present_by_place[s.place], "staff": list(staff.values()), "fixtures": list(fixtures.values()), "doors": doors,
                 "doorstep": s.doorstep, "doorstep_label": "Devant chez " + labels[s.doorstep][5:] if s.doorstep and labels[s.doorstep].startswith("Chez ") else "Devant " + labels[s.doorstep] if s.doorstep else None,

@@ -82,19 +82,19 @@ def build_case(seed=0, *, focus_assault=0):
         text = f"{p.name} — Cheveux {a.hair.value}; manteau {a.coat.value}; {a.height.value}."
         add(key, "person", text, key, claim={"profile": p.id, "coat": a.coat.value, "height": a.height.value, "hair": a.hair.value})
         actions.append(DiscoveryAction("meet:" + p.id, Operation.INTERVIEW, "Parler à " + p.name,
-                                       p.home, p.id, (key,)))
-        record_key = "police_record:" + p.id
-        add(record_key, "police_record", f"Fiche de {p.name}. Domicile : {dict(plan.locations)[p.home]}. Métier : {p.occupation.label}.\n"
-            "Aucun antécédent judiciaire renseigné dans cette fiche.", record_key)
-        actions.append(DiscoveryAction("record:" + p.id, Operation.READ,
-            "Consulter la fiche et le casier de " + p.name, "police", "staff:police",
-            (key, record_key)))
+                                       p.home, p.id, (key, "evening:" + p.id)))
         evening = "evening:" + p.id
         presence = next((r for r in evidence.presences if r.person == p.id), None)
         add(evening, "personal_account", evening_account(crime, evidence, evenings, p.id),
             "evening_episode:" + p.id,
             claim={"account": p.id, "place": presence.place,
                    **remembered_times(presence), "source_actor": presence.witness} if presence else None)
+        record_key = "police_record:" + p.id
+        add(record_key, "police_record", f"Fiche de {p.name}. Domicile : {dict(plan.locations)[p.home]}. Métier : {p.occupation.label}.\n"
+            "Aucun antécédent judiciaire renseigné dans cette fiche.", record_key)
+        actions.append(DiscoveryAction("record:" + p.id, Operation.READ,
+            "Consulter la fiche et le casier de " + p.name, "police", "staff:police",
+            (key, record_key)))
         old = next((a for a in actions if a.id == "interview:" + p.id), None)
         if old:
             actions.remove(old)
@@ -228,20 +228,26 @@ def build_case(seed=0, *, focus_assault=0):
             p.place, p.witness, ("alibi:" + p.person,), ("evening:" + p.person,)))
     # Both existing keepers have a public conversation, even without a stock
     # incident. The register is post-authored from REAL venue visits on shift.
+    # The keeper's own memory is patchy: half the regulars come to mind unprompted
+    # and those named are vouched for directly; the others only when asked by name.
     for keeper in crime.keepers:
+        memory = random.Random(f"register-memory:{seed}:{keeper.id}")
         visits = [r for r in registrations if r.keeper == keeper.id]
         texts = [f"{people[v.person].name} est passé, vers {spoken_time(((v.minute + 7) // 15) * 15)}."
                  for v in visits]
         seen = {v.person for v in visits}
+        register = {}
         for p in evidence.presences:
-            if p.witness != keeper.id or p.person in seen:
+            if p.witness != keeper.id or p.person in seen or memory.random() < 0.5:
                 continue
             times = remembered_times(p)
             when = "entre " + spoken_time(times["start"]) + " et " + spoken_time(times["end"]) if times else "pendant le service"
             texts.append(f"{people[p.person].name} était à une table que je servais {when}.")
+            if times and p.basis != "continuous_noncontact" and crime.method is not Method.POISONED:
+                register[p.person] = {"place": p.place, **times, "requires": ("medical_window",)}
         key = "venue_register:" + keeper.place
         text = " ".join(texts) + " Pour les autres clients, mes souvenirs sont moins précis." if texts else "Je ne peux vous citer personne avec certitude pour cette soirée. Ça ne veut pas dire que personne n'est venu."
-        add(key, "venue_register", text, key)
+        add(key, "venue_register", text, key, claim={"register": register, "source_actor": keeper.id} if register else None)
         if visits:
             sources.update(v.id for v in visits)
             artifacts[-1] = replace(artifacts[-1], sources=tuple(v.id for v in visits))
@@ -324,18 +330,43 @@ def context_is_refutable(case):
     return True
 
 
+DIFFICULTY = {"facile": 3.0, "normal": 2.2, "difficile": 1.6}  # deadline, as a multiple of the shortest thread
+
+
 class PlaySession:
-    def __init__(self, case, skills=("search", "rapport")):
+    def __init__(self, case, skills=("search", "rapport"), *, strict=True, difficulty="normal"):
+        """`strict` keeps the original adjudication: an accusation is refused until the
+        file is complete. Otherwise the detective accuses at their own risk, against
+        the clock: a wrong accusation costs time and clears the accused."""
         if len(set(skills)) != 2 or not set(skills) <= set(SKILLS):
             raise ValueError("Choose exactly two distinct skills: " + ", ".join(SKILLS))
+        if difficulty not in DIFFICULTY:
+            raise ValueError("Unknown difficulty: " + ", ".join(DIFFICULTY))
         self.case, self.skills = case, frozenset(skills)
         self.state, self.at, self.place = DiscoveryState(), 1440 + 8 * 60, case.crime.scene
+        self.strict, self.cleared, self.mistakes = strict, set(), 0
+        self.deadline = None
+        if not strict:
+            from scenario_threads import deadline_minutes
+            self.deadline = self.at + deadline_minutes(case, DIFFICULTY[difficulty])
         self.journal, self.found, self.prints, self.marks = [], set(), {}, {}
         self.object_places, self.carried = {}, set()
         self.finished = False
         self.person_places = {pid: case.life.people[pid].home for pid in case.plan.population}
         self.doorstep = None
         self.discovery_places = {}
+
+    @property
+    def time_left(self):
+        return None if self.deadline is None else max(0, self.deadline - self.at)
+
+    def _advance(self, minutes):
+        """The clock moves; past the deadline the case is closed unsolved."""
+        self.at += minutes
+        if self.deadline is not None and self.at >= self.deadline and not self.finished:
+            self.finished = True
+            self.journal.append({"id": "closed", "kind": "ending",
+                                 "text": "L'échéance est passée : le dossier est classé sans suite."})
 
     def person_place(self, pid):
         place = self.person_places[pid]
@@ -380,7 +411,9 @@ class PlaySession:
         target = place if place in streets._adjacency else SERVICE_PARENTS[place]
         minutes = sum(streets.duration(a, b) for a, b in zip(streets.path(origin, target), streets.path(origin, target)[1:]))
         minutes += 3 * (self.place not in streets._adjacency) + 3 * (place not in streets._adjacency)
-        self.at += minutes
+        if self.finished:
+            raise ValueError("This investigation has ended")
+        self._advance(minutes)
         self.place = place
         return f"{self.locations[place]} — {clock(self.at)}, trajet {minutes} min."
 
@@ -390,16 +423,55 @@ class PlaySession:
                      and not (row["id"] in ("request_exam", "request_exam_morgue")
                               and "exam_request" in dict(self.state.known)))
 
+    BATCHES = {"record:": "Consulter les fiches de {}", "verify:": "Vérifier les récits de {} auprès du personnel"}
+
+    def batches(self):
+        """At the police station or a venue, several records or verifications are one visit."""
+        rows = []
+        named = self.named_people()
+        for prefix, label in self.BATCHES.items():
+            members = [row for row in self.options() if row["id"].startswith(prefix)
+                       and (prefix != "record:" or row["id"].split(":", 1)[1] in named)]
+            if len(members) >= 2:
+                names = [self.case.life.people[row["id"].split(":", 1)[1]].name for row in members]
+                rows.append({"id": "batch:" + prefix.rstrip(":"), "operation": members[0]["operation"],
+                             "label": label.format(", ".join(names)), "place": self.place,
+                             "actor": members[0]["actor"], "members": [row["id"] for row in members]})
+        return tuple(rows)
+
     def do(self, action):
         if action in ("request_exam", "request_exam_morgue") and "exam_request" in dict(self.state.known):
             raise ValueError("L'examen est déjà demandé ; le rapport sera remis à la morgue.")
+        if action.startswith("batch:"):
+            batch = next((b for b in self.batches() if b["id"] == action), None)
+            if batch is None:
+                raise ValueError("Rien à regrouper ici pour l'instant.")
+            at, texts = self.at, []
+            for member in batch["members"]:
+                texts.append(self._discover(member, self.place))
+                self.at = at  # one visit, one span of time
+            self._advance(3 if "rapport" in self.skills else 5)
+            return "\n\n".join(texts)
         return self._discover(action, self.place)
+
+    def register_entries(self, pid=None):
+        """People the venue staff vouched for unprompted, once the crime is dated."""
+        known = dict(self.state.known)
+        rows = {}
+        for key, claim in self.case.claims.items():
+            if key in known and "register" in claim:
+                for person, entry in claim["register"].items():
+                    if set(entry["requires"]) <= known.keys():
+                        rows[person] = dict(entry, source=key)
+        return rows.get(pid) if pid else rows
 
     def alibi_state(self, pid):
         known = dict(self.state.known)
         key = "alibi:" + pid
         if key in known:
             return "confirmed" if set(self.case.claims[key].get("requires", ())) <= known.keys() else "corroborated"
+        if self.register_entries(pid):
+            return "confirmed"
         return "reported" if "evening:" + pid in known else "unknown"
 
     def timeline(self):
@@ -425,6 +497,13 @@ class PlaySession:
                     "title": self.case.life.people[pid].name + " · " + labels[claim["place"]],
                     "text": next(r["text"] for r in self.journal if r["id"] == key),
                     "place": claim["place"], "person": pid, "alibi_state": self.alibi_state(pid)})
+            elif "register" in claim:
+                for pid, entry in claim["register"].items():
+                    rows.append({"id": key + ":" + pid, "start": entry["start"], "end": entry["end"], "kind": "alibi",
+                        "status": "verified" if set(entry["requires"]) <= known.keys() else "reported",
+                        "title": self.case.life.people[pid].name + " · " + labels[entry["place"]] + " · registre",
+                        "text": "Cité spontanément par le personnel, à sa table sur cette période.",
+                        "place": entry["place"], "person": pid, "alibi_state": self.alibi_state(pid)})
             elif key == "victim_diary" and claim.get("appointment"):
                 ap = claim["appointment"]
                 rows.append({"id": key, "start": ap["time"], "end": ap["time"], "kind": "appointment",
@@ -457,9 +536,10 @@ class PlaySession:
     def _discover(self, action, source_place):
         if self.finished:
             raise ValueError("This investigation has ended")
+        before = dict(self.state.known)
         self.state, rows = self.effective_plan.perform(self.state, action, place=source_place, at=self.at)
         self.discovery_places[action] = source_place
-        self.journal.extend(rows)
+        self.journal.extend(row for row in rows if row["id"] not in before)  # a re-asked question adds no duplicate
         discovered = self.case.objects.get(action, ())
         self.found.update(discovered)
         for obj in discovered:
@@ -467,8 +547,8 @@ class PlaySession:
         if action.startswith("search_bin:") or action in ("collect_object", "search_cupboard"):
             self.carried.update(discovered)
         operation = next(a.operation for a in self.case.plan.actions if a.id == action)
-        self.at += ((3 if "search" in self.skills else 10) if operation is Operation.SEARCH else
-                    3 if "rapport" in self.skills and operation in (Operation.INTERVIEW, Operation.VERIFY) else 5)
+        self._advance((3 if "search" in self.skills else 10) if operation is Operation.SEARCH else
+                      3 if "rapport" in self.skills and operation in (Operation.INTERVIEW, Operation.VERIFY) else 5)
         return "\n\n".join(row["text"] for row in rows)
 
     def camera(self, hour, *, place=None):
@@ -484,7 +564,7 @@ class PlaySession:
             raise ValueError("This recording is already in your notebook")
         if clips:
             return self._discover(key, source_place)
-        self.at += 5
+        self._advance(5)
         self.journal.append({"id": key, "kind": "footage", "text": text})
         return text
 
@@ -553,7 +633,7 @@ class PlaySession:
         matches = [key for key, value in self.prints.items() if key != obj and set(value) & set(self.prints[obj])]
         if matches:
             text += "\nMotif partiel également présent sur : " + ", ".join(self.object_label(key) for key in matches) + ". Pas une identification certaine."
-        self.at += 8
+        self._advance(8)
         self.journal.append({"id": "print:" + obj, "kind": "contact", "text": self.object_label(obj) + " — " + text})
         return text
 
@@ -575,7 +655,7 @@ class PlaySession:
             text = "Le produit restant dans ce flacon est compatible avec la substance retrouvée dans le verre. Plusieurs flacons de ce produit existent : ce résultat n'identifie pas celui qui aurait été utilisé."
         else:
             text = "Aucune trace exploitable reliant cet objet aux prélèvements de l'affaire. Cela ne prouve pas qu'il n'a jamais été manipulé."
-        self.at += 20
+        self._advance(20)
         self.journal.append({"id": key, "kind": "laboratory_contact", "text": self.object_label(obj) + " — " + text})
         return text
 
@@ -611,7 +691,7 @@ class PlaySession:
         """
         known = dict(self.state.known)
         profiles = {c["profile"]: c for key, c in self.case.claims.items() if key in known and "profile" in c}
-        remaining = set(self.case.plan.population)
+        remaining = set(self.case.plan.population) - self.cleared - self.register_entries().keys()
         for key, claim in self.case.claims.items():
             if key not in known:
                 continue
@@ -632,6 +712,11 @@ class PlaySession:
         profiles = {c["profile"]: c for key, c in self.case.claims.items() if key in known and "profile" in c}
         result = {pid: [] for pid in self.case.plan.population}
         labels = {"hair": "Cheveux", "coat": "Manteau", "height": "Taille"}
+        for pid, entry in self.register_entries().items():
+            result[pid].append({"source": entry["source"],
+                                "text": f"Le personnel de {self.locations[entry['place']]} se souvient de cette personne à sa table pendant toute la période."})
+        for pid in self.cleared:
+            result[pid].append({"source": "accusation", "text": "Mis hors de cause après une accusation rejetée."})
         for key, claim in self.case.claims.items():
             if key not in known:
                 continue
@@ -692,7 +777,7 @@ class PlaySession:
         key = "about:" + person + ":" + other
         if not any(row["id"] == key for row in self.journal):
             self.journal.append({"id": key, "kind": "relationship", "text": self.case.life.people[person].name + " — « " + text + " »"})
-            self.at += 3 if "rapport" in self.skills else 5
+            self._advance(3 if "rapport" in self.skills else 5)
         return text
 
     def ask_context(self, person, topic):
@@ -720,7 +805,7 @@ class PlaySession:
         key = "context:" + person + ":" + topic
         if not any(row["id"] == key for row in self.journal):
             self.journal.append({"id": key, "kind": "conversation", "text": self.case.life.people[person].name + " — « " + text + " »"})
-            self.at += 3 if "rapport" in self.skills else 5
+            self._advance(3 if "rapport" in self.skills else 5)
         return text
 
     def board(self):
@@ -735,26 +820,61 @@ class PlaySession:
                            "camera": any(c.place == place for c in self.case.evidence.cameras)})
         return tuple(result)
 
+    MISTAKE_MINUTES = 90
+
     def accuse(self, person, method=None, goal=None):
         known = dict(self.state.known)
         if person not in self.case.plan.population:
             raise ValueError("Choose an existing suspect")
-        if "medical_window" not in known or "victim_diary" not in known:
-            return False, "Il manque la méthode ou le dernier projet de la victime. L'accusation n'est pas encore déposée."
+        if self.finished:
+            raise ValueError("This investigation has ended")
         if method is not None and method not in {m.value for m in Method}:
             raise ValueError("Unknown method")
-        if goal is not None and goal != self.case.claims["victim_diary"]["goal"]:
-            return False, "Cette reconstitution du dernier déplacement contredit l'agenda consulté."
-        if self.remaining() != {person}:
-            return False, "Le dossier laisse encore plusieurs possibilités. L'accusation n'est pas encore déposée."
+        if self.strict:
+            if "medical_window" not in known or "victim_diary" not in known:
+                return False, "Il manque la méthode ou le dernier projet de la victime. L'accusation n'est pas encore déposée."
+            if goal is not None and goal != self.case.claims["victim_diary"]["goal"]:
+                return False, "Cette reconstitution du dernier déplacement contredit l'agenda consulté."
+            if self.remaining() != {person}:
+                return False, "Le dossier laisse encore plusieurs possibilités. L'accusation n'est pas encore déposée."
+        elif person in self.cleared:
+            raise ValueError("Cette personne a déjà été mise hors de cause.")
         # Only the final adjudicator consults private truth, not the player's bot.
+        name = self.case.life.people[person].name
         success = person == self.case.crime.kernel.roles.author and (method is None or method == self.case.crime.method.value)
+        if not success and not self.strict:
+            # A wrong accusation is not the end: it costs time, and the accused is cleared for good.
+            self.mistakes += 1
+            self.cleared.add(person)
+            self.journal.append({"id": "cleared:" + person, "kind": "accusation",
+                                 "text": f"Le commissaire a rejeté le dossier contre {name} : les charges ne tiennent pas. {name} est mis(e) hors de cause."})
+            self._advance(self.MISTAKE_MINUTES)
+            if self.finished:
+                return False, f"Le commissaire rejette le dossier contre {name}. Le temps vous a manqué : l'affaire est classée sans suite."
+            return False, (f"Le commissaire rejette le dossier contre {name} : les charges ne tiennent pas. "
+                           f"{name} est hors de cause, et vous avez perdu une heure et demie.")
         self.finished = True
         if not success:
             return False, "Accusation rejetée : la reconstitution est erronée."
-        return True, ("Dossier établi : " + self.case.life.people[person].name + ".\n"
+        gaps = [g for key, g in (("medical_window", "sans la période établie par le légiste"),
+                                 ("victim_diary", "sans le dernier projet de la victime")) if key not in known]
+        return True, ("Dossier établi : " + name + ".\n"
                       "Méthode : " + self.case.crime.method.label + ".\n"
-                      "Le contexte éclaire le geste, mais les liens et les griefs ne prouvaient pas à eux seuls la culpabilité.")
+                      + (f"Un dossier retenu {', '.join(gaps)} : l'aveu a fait le reste.\n" if gaps else "")
+                      + "Le contexte éclaire le geste, mais les liens et les griefs ne prouvaient pas à eux seuls la culpabilité.")
+
+
+def menu(session):
+    """The CLI's numbered actions: nothing already known, batches instead of their members."""
+    known = dict(session.state.known)
+    by_id = {a.id: a for a in session.case.plan.actions}
+    batches = session.batches()
+    grouped = {member for batch in batches for member in batch["members"]}
+    named = session.named_people()  # the clerk needs a name: the CLI, like the 3D client, waits for one
+    rows = [row for row in session.options() if row["id"] not in grouped
+            and any(key not in known for key in by_id[row["id"]].reveals)
+            and not (row["id"].startswith("record:") and row["id"].split(":", 1)[1] not in named)]
+    return tuple(rows) + batches
 
 
 HELP = """Commandes :
@@ -767,11 +887,12 @@ HELP = """Commandes :
   camera HEURE                  caméra de ce quartier, hier, HEURE à HEURE+1
   objets / empreinte N           objets examinés / relevé avec la compétence
   analyse N                     analyser un objet récupéré, au laboratoire
-  carnet / pistes / horaires    notes / fils de l'enquête / chronologie acquise
+  fils                          la pelote : trois fils, l'étape suivante de chacun
+  carnet / pistes / horaires    notes / pistes recueillies / chronologie acquise
   suspects / recouper            profils connus / recoupements publics
   suivre NOM / ecarter NOM       aide visuelle uniquement
   attendre MINUTES              laisser passer un délai
-  accuser NOM                   déposer le dossier si suffisamment recoupé
+  accuser NOM                   déposer le dossier, à vos risques : une erreur coûte du temps
   aide / quitter
 """
 
@@ -780,20 +901,26 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Neon Noir — nouveau générateur causal, CLI expérimentale")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--skills", default="search,rapport", help="Deux parmi fingerprints,search,rapport")
+    parser.add_argument("--difficulte", default="normal", choices=sorted(DIFFICULTY), help="Échéance : large, serrée ou très serrée")
+    parser.add_argument("--classique", action="store_true", help="Règles d'origine : pas d'échéance, accusation refusée tant que le dossier est incomplet")
     args = parser.parse_args(argv)
     try:
-        session = PlaySession(sample_playable(args.seed), tuple(args.skills.split(",")))
+        session = PlaySession(sample_playable(args.seed), tuple(args.skills.split(",")), strict=args.classique, difficulty=args.difficulte)
     except ValueError as error:
         parser.error(str(error))
     people, case = session.case.life.people, session.case
     victim = people[case.crime.kernel.roles.victim]
+    victim.home  # the victim's door keeps its name: the detective knows whose case this is
     print(f"NEON NOIR — {victim.name} ({victim.occupation.label}, {victim.workplace.label}) : décès suspect.\n"
           f"Vous arrivez le lendemain à 08:00, {session.locations[session.place]}.\n"
           f"Les {len(case.plan.population)} personnes du dossier sont des contacts à vérifier, pas des coupables présumés.\n"
-          "Compétences : " + ", ".join(sorted(session.skills)) + ".\n" + HELP)
+          "Compétences : " + ", ".join(sorted(session.skills)) + "."
+          + (f"\nLe dossier sera classé à {clock(session.deadline)} : accusez quand vous êtes sûr, une erreur coûte une heure et demie."
+             if session.deadline else "") + "\n" + HELP)
     while not session.finished:
         try:
-            words = shlex.split(input(f"[{clock(session.at)} {session.locations[session.place]}] > "))
+            left = f" · {session.time_left // 60} h {session.time_left % 60:02d} restantes" if session.deadline else ""
+            words = shlex.split(input(f"[{clock(session.at)} {session.locations[session.place]}{left}] > "))
             if not words:
                 continue
             cmd, *rest = words
@@ -802,8 +929,11 @@ def main(argv=None):
             if cmd == "aide":
                 print(HELP)
             elif cmd == "lieux":
+                named = session.named_people()
                 for key, label in session.locations.items():
-                    residents = [p.name for p in people.values() if p.home == key and p.id != victim.id]
+                    residents = [p.name if p.id in named else "quelqu'un" for p in people.values() if p.home == key and p.id != victim.id]
+                    if key.startswith("home") and not any(p.id in named for p in people.values() if p.home == key and p.id != victim.id):
+                        label = "Logement " + key.removeprefix("home") if key != victim.home else label
                     objects = "; caméra + poubelle" if key in case.crime.streets._adjacency and case.crime.streets.kind(key) is NodeKind.STREET else ""
                     visible = next(row for row in session.board() if row["place"] == key)
                     actors = sorted({r["label"] for r in visible["actions"] if r["operation"] in (Operation.INTERVIEW.value, Operation.VERIFY.value)})
@@ -813,7 +943,7 @@ def main(argv=None):
             elif cmd == "aller":
                 print(session.go(" ".join(rest)))
             elif cmd == "voir":
-                options = session.options()
+                options = menu(session)
                 for i, row in enumerate(options, 1):
                     print(f"{i}. {row['label']}")
                 if not options:
@@ -827,7 +957,7 @@ def main(argv=None):
                     print("Caméra locale : camera HEURE (hier). Poubelle fouillable ci-dessus.")
             elif cmd == "faire":
                 i = int(rest[0])
-                options = session.options()
+                options = menu(session)
                 if not 1 <= i <= len(options):
                     raise ValueError("Numéro d'action invalide")
                 print(session.do(options[i - 1]["id"]))
@@ -854,6 +984,9 @@ def main(argv=None):
                     status = {"verified": "corroboré", "reported": "déclaré / approximatif", "planned": "prévu, pas attesté"}[row["status"]]
                     interval = clock(row["start"]) + (" – " + clock(row["end"]) if row["start"] != row["end"] else "")
                     print(f"Hier · {interval} · {row['title']} [{status}]\n  {row['text']}")
+            elif cmd in ("fils", "guide"):
+                from scenario_threads import guide, render
+                print(render(guide(session)))
             elif cmd == "pistes":
                 print("\n\n".join(session.leads()))
                 for thread in session.inquiry_threads():
@@ -876,7 +1009,11 @@ def main(argv=None):
                 if not pid or not topic:
                     raise ValueError("Personne ou sujet inconnu")
                 if topic in ("observations", "evening"):
-                    print(session.do(("observe:" if topic == "observations" else "interview:") + pid))
+                    key = ("observations:" if topic == "observations" else "evening:") + pid
+                    if key in dict(session.state.known):
+                        print(next(r["text"] for r in session.journal if r["id"] == key))
+                    else:
+                        print(session.do(("observe:" if topic == "observations" else "interview:") + pid))
                 else:
                     print(session.ask_context(pid, topic))
             elif cmd in ("suspects", "recouper"):
@@ -897,6 +1034,8 @@ def main(argv=None):
                 if cmd == "accuser":
                     success, text = session.accuse(person)
                     print(text)
+                    if session.finished and not success and session.deadline is None:
+                        pass
                 else:
                     session.marks[person] = cmd
                     print("Repère visuel mis à jour; aucune preuve ajoutée.")
@@ -904,7 +1043,7 @@ def main(argv=None):
                 minutes = int(rest[0])
                 if not 1 <= minutes <= 360:
                     raise ValueError("Attendre entre 1 et 360 minutes")
-                session.at += minutes
+                session._advance(minutes)
             else:
                 print("Commande inconnue; aide pour la liste.")
         except (ValueError, IndexError) as error:
@@ -912,6 +1051,8 @@ def main(argv=None):
         except (EOFError, KeyboardInterrupt):
             print("\nEnquête interrompue.")
             break
+    if session.finished and session.journal and session.journal[-1]["id"] == "closed":
+        print(session.journal[-1]["text"])
 
 
 if __name__ == "__main__":

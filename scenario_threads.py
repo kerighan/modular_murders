@@ -23,6 +23,8 @@ FAMILIES = ("signalement", "horaires", "mixte")
 BASE_STEPS = 3  # request the exam, read the report, read the diary: the spine of any file
 PER_ALIBI = 1  # one conversation gives the look and the evening; verifications are one visit per venue
 RECORDS = 2  # learn the names somewhere, then the police records of everybody named in one visit
+PER_PRINT = 1  # searching a home lifts its mug on the spot, with the kit
+MATERIAL = 2  # the lab ties the object to the crime, then its print is lifted
 
 
 # ------------------------------------------------------------------ authoring side
@@ -49,6 +51,19 @@ def remembered(case):
     return {pid: key for key, claim in case.claims.items() if "register" in claim for pid in claim["register"]}
 
 
+def print_excluded(case):
+    """Innocents whose partial pattern differs from the author's (truth, authoring only)."""
+    author = case.crime.kernel.roles.author
+    ridges = {c.person: c.ridge for c in case.evidence.contacts if c.object.startswith("mug:")}
+    return {p for p in case.plan.population if p != author and ridges[p] != ridges[author]}
+
+
+def material_setup(case):
+    """Finding the hidden object: half the containers on average, then the lab and the print."""
+    containers = sum(a.id.startswith(("search_bin:", "search_cupboard:")) for a in case.plan.actions)
+    return (containers + 1) // 2 + MATERIAL if case.evidence.disposal else None
+
+
 def family_lengths(case):
     """Minimal number of investigative actions per family, travel excluded.
 
@@ -63,6 +78,7 @@ def family_lengths(case):
     poison = 2 if any(basis == "continuous_noncontact" for basis in alibis.values()) else 0  # the glass, then the lab
 
     presences = {p.person: p.place for p in case.evidence.presences}
+    by_prints, setup = print_excluded(case), material_setup(case)
 
     def alibi_cost(people):
         """Registers are one question per venue; the rest is one conversation per person,
@@ -89,10 +105,17 @@ def family_lengths(case):
                                        {p for p in innocents if p in union and p not in registers}):
                     cost = shared + (RECORDS if by_description else 0) + alibi_cost([p for p in innocents if p not in by_description])
                     mixte = cost if mixte is None else min(mixte, cost)
+            if setup is not None and all(p in union or p in alibis or p in by_prints for p in innocents):
+                # Prints first: the lab ties the found object to the crime, mugs of the
+                # excludable people are lifted, the rest falls to descriptions or alibis.
+                rest = [p for p in innocents if p not in by_prints]
+                by_description = {p for p in rest if p in union}
+                cost = shared + setup + PER_PRINT * len(by_prints) + (RECORDS if by_description else 0) + alibi_cost([p for p in rest if p not in by_description])
+                mixte = cost if mixte is None else min(mixte, cost)
     horaires = BASE_STEPS + alibi_cost(sorted(innocents)) if innocents <= alibis.keys() else None
     return {"signalement": signalement, "horaires": horaires, "mixte": mixte,
             "innocents": len(innocents), "sources": len(sources), "alibis": len(alibis),
-            "method": case.crime.method.value}
+            "prints": len(by_prints), "method": case.crime.method.value}
 
 
 def deadline_minutes(case, factor):
@@ -233,14 +256,30 @@ def guide(session):
     lab = [a for a in plan.actions if a.operation is Operation.ANALYZE and a.id not in done_ids
            and a.id not in ("analyze_drink",) and set(a.requires) <= known.keys()]
     carried = sorted(obj for obj in session.carried if "surface:" + obj not in journal_ids)
-    analyses = [f"{a.label} — Le Laboratoire{when(a)}" for a in lab] + [f"Analyser {session.object_label(obj)} — Le Laboratoire" for obj in carried]
+    # The hidden object: every container is worth a look, none is labelled.
+    containers = [a for a in plan.actions if a.id.startswith(("search_bin:", "search_cupboard:")) and a.id not in done_ids
+                  and (a.id.startswith("search_bin:") or any(people[pid].home == a.place for pid in remaining) or a.place == people[case.crime.kernel.roles.victim].home)]
+    found = sorted(obj for obj in session.carried if not obj.startswith("mug:"))
+    steps.append(_step("Retrouver l'objet du crime", "done" if session.linked else "next" if found or containers else "later",
+                       [] if session.linked else [f"Analyser {session.object_label(obj)} — Le Laboratoire" for obj in carried] +
+                       [f"{a.label} — {where(a)}" for a in containers][:6],
+                       note="Un objet récupéré ne dit pas qui l'a tenu : le laboratoire et les empreintes parlent." if found and not session.linked else
+                       f"{len(containers)} placard(s) ou poubelle(s) encore à fouiller" if containers and not session.linked else None))
+    analyses = [f"{a.label} — Le Laboratoire{when(a)}" for a in lab]
     if analyses:
         steps.append(_step("Analyses au laboratoire", "next", analyses))
     if "fingerprints" in session.skills:
-        todo = [obj for obj in sorted(session.found) if obj not in session.prints]
+        todo = [obj for obj in sorted(session.carried) if obj not in session.prints]  # recovered objects, not household clutter
         prints = [f"Relever {session.object_label(obj)} — {labels[session.object_places[obj]] if obj not in session.carried else 'sur vous'}" for obj in todo]
-        steps.append(_step("Empreintes", "next" if prints else "done" if session.prints else "later", prints,
+        steps.append(_step("Empreintes sur les objets", "next" if prints else "done" if session.prints else "later", prints,
                            note="Un motif partagé est un contact, pas une preuve." if session.prints else None))
+        on_crime = any(obj in session.prints for obj in session.linked)
+        mugs = [pid for pid in sorted(remaining, key=lambda pid: people[pid].name) if "mug:" + pid not in session.prints]
+        steps.append(_step("Comparer aux tasses des personnes encore possibles",
+                           "later" if not on_crime else "next" if mugs else "done",
+                           [f"Fouiller le logement de {people[pid].name} — {labels[people[pid].home]}" for pid in mugs] if on_crime else [],
+                           note="Un motif absent de l'objet du crime écarte la personne." if on_crime else
+                           "D'abord l'objet du crime, son analyse et son empreinte."))
     threads.append({"family": "matériel", "title": "Le matériel", "steps": steps})
 
     missing = [name for key, name in (("medical_window", "la période du crime"), ("victim_diary", "l'agenda de la victime")) if key not in known]

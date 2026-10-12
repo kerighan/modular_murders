@@ -1,5 +1,14 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.25-causal** : `../builds/nexus-city-solo-debug-v25.apk`.
+Moteur `causal-3d-v6` : profils d'affaire tirés par seed (le fil le plus court
+change d'une enquête à l'autre), un placard à fouiller dans chaque logement,
+empreintes comparables (la tasse de l'habitant est relevée en fouillant avec la
+compétence empreintes ; un motif absent de l'objet du crime écarte la personne),
+serveurs limités à deux clients cités spontanément. Sauvegardes v24 et
+antérieures : nouvelle enquête. Même signature.
+
+
 Version **0.24-causal** : `../builds/nexus-city-solo-debug-v24.apk`.
 Mode libre : difficulté choisie à la préparation (échéance large, serrée, très
 serrée), compte à rebours dans l'en-tête, onglet « Fils » du carnet (trois fils

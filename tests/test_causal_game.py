@@ -28,6 +28,15 @@ def fresh(seed=7, skills=("fingerprints", "lockpick")):
     return game
 
 
+def seed_where(predicate, skills=("fingerprints", "lockpick")):
+    """The first early seed whose case fits: tests describe a situation, not a seed."""
+    for seed in range(40):
+        game = fresh(seed, skills)
+        if predicate(game):
+            return game
+    pytest.skip("no fitting case among the first seeds")
+
+
 def travel(game, target):
     """Read the public address/route, not the authored criminal trajectory."""
     view = game.view(game.player)
@@ -655,9 +664,10 @@ def test_public_staff_exist_even_without_an_inventory_incident(venue, actor):
 
 
 def test_diary_appointment_can_be_asked_of_every_suspect_without_a_menu_tell():
-    game = fresh(2)
+    from scenario_witnesses import EventKind, scene_events
+    game = seed_where(lambda g: g.case.crime.victim_plan.appointment is not None
+                      and any(e.kind is EventKind.NONARRIVAL for e in scene_events(g.case.crime)))
     appointment = game.case.crime.victim_plan.appointment
-    assert appointment is not None
     victim = game.case.life.people[game.case.crime.kernel.roles.victim]
     travel(game, victim.home)
     discover(game, "read_diary")
@@ -693,8 +703,7 @@ def test_lead_location_articles(label, expected):
 
 
 def test_glass_trail_is_acquired_not_a_preview_and_closes_after_analysis():
-    game = fresh(5)
-    assert game.case.crime.method.value == "poisoned"
+    game = seed_where(lambda g: g.case.crime.method.value == "poisoned")
     assert not any(r["id"] == "drink_analysis" for r in game.view(game.player)["leads"])
     discover(game, "inspect_scene")
     assert not any(r["id"] == "drink_analysis" for r in game.view(game.player)["leads"])
@@ -746,7 +755,8 @@ def test_contextual_answers_use_existing_facts_and_do_not_exclude_anyone():
 
 
 def test_remote_clip_and_empty_hour_acquire_from_the_right_street():
-    game = fresh()
+    game = seed_where(lambda g: g.case.evidence.clips and g.case.evidence.clips[0].minute >= 18 * 60
+                      and not any(c.place == g.case.evidence.clips[0].place and c.minute < 18 * 60 for c in g.case.evidence.clips))
     discover(game, "inspect_scene")
     travel(game, "cctv")
     clip = game.case.evidence.clips[0]
@@ -945,7 +955,8 @@ def test_named_matching_ignores_unrevealed_sources_and_partial_names():
 
 
 def test_corroboration_uses_existing_service_staff_not_named_extras():
-    game = fresh()
+    # p1 is vouched for by the other venue's staff, not the barman met first.
+    game = seed_where(lambda g: any(p.person == "p1" and p.witness == "staff:restaurant" for p in g.case.evidence.presences))
     assert game.view(game.player)["contacts"] == []
     travel(game, "bar")
     game.play(("service_menu", "staff:bar"))

@@ -1,5 +1,26 @@
 # Passation : client Godot
 
+## Profils d'affaire, placards partout, empreintes comparables — moteur v6 (12 octobre 2026, côté backend)
+
+APK `builds/nexus-city-solo-debug-v25.apk`, versionCode 25 / `0.25-causal`, même certificat.
+`causal_game.py` passe en `causal-3d-v6` : les seeds ne donnent plus les mêmes affaires, nouvelle
+enquête requise. Rien à changer dans le client, mais à savoir :
+
+- **Profils d'affaire** : `sample_playable(seed)` tire par seed le fil favorisé (signalement /
+  horaires / mixte, `PROFILES` dans `scenario_play.py`) et règle témoins de l'agression et
+  mémoire des serveurs en conséquence ; le fil le plus court est maintenant réparti à peu près
+  également (audit `python scenario_threads.py --count 120`). Les serveurs citent au plus deux
+  clients spontanément par établissement.
+- **Placards** : chaque logement a `search_cupboard:homeX` (fixture `cupboard:homeX`, prop
+  `cupboard`). Avant, seul le logement qui cachait l'arme avait un placard : c'était une fuite.
+- **Empreintes comparables** : avec la compétence `fingerprints`, fouiller un logement relève la
+  tasse de l'habitant sur place (motif entier). Un objet récupéré, lié au crime par le
+  laboratoire (`analyze_object` → `session.linked`) et relevé, écarte toute personne dont le motif
+  n'y figure pas (`session.print_exclusions()`, texte dans `deductions()` source `prints`,
+  pris en compte par `remaining()`). Quatre motifs ; celui du coupable est toujours partagé.
+  Le fil « Le matériel » du guide expose ces étapes (`view["threads"]`).
+- CLI : `faire MOT` choisit une action par un mot de son libellé (les numéros bougent).
+
 ## Mode libre dans le client : échéance, fils, accusation — v24 (12 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v24.apk`, versionCode 24 / `0.24-causal`.

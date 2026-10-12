@@ -224,6 +224,9 @@ def crime_window(crime):
     return max(0, anchor - (60 if crime.method is Method.POISONED else 30)), anchor + 30
 
 
+RIDGES = ("boucle A", "arc B", "spirale C", "boucle D")  # partial patterns: a few people share each one
+
+
 def build_evidence(crime, seed=0, appearances=None, *, required_alibis=()):
     rng = random.Random(f"evidence-v1:{seed}")
     people, x = crime.kernel.world.people, crime.execution
@@ -257,7 +260,12 @@ def build_evidence(crime, seed=0, appearances=None, *, required_alibis=()):
             # still contextual. Rejection is an authoring choice, not a fake mask.
             continue
         clips.append(clip)
-    ridges = {p.id: rng.choice(("boucle A", "arc B", "spirale C")) for p in people}
+    ridges = {p.id: rng.choice(RIDGES) for p in people}
+    # The author's partial pattern is always shared by someone else in the cast:
+    # a lifted print narrows the field, it never names one person on its own.
+    author, again = crime.kernel.roles.author, random.Random(f"ridges-v1:{seed}")
+    while sum(ridges[p.id] == ridges[author] for p in people if p.id != crime.kernel.roles.victim) < 2:
+        ridges = {p.id: again.choice(RIDGES) for p in people}
     contacts = [Contact("contact:mug:" + p.id, p.id, "mug:" + p.id, p.home,
                         -1440 + 8 * 60, ridges[p.id]) for p in people]
     for t in crime.transfers:

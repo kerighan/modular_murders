@@ -44,7 +44,7 @@ class PlayCase:
     registrations: tuple
 
 
-def build_case(seed=0, *, focus_assault=0):
+def build_case(seed=0, *, focus_assault=0, register_memory=0.5):
     crime = CrimeBuilder(seed).build(KernelBuilder(seed, people_count=8).sample())
     life = build_life(crime, seed)
     witnesses = WitnessBuilder(seed).build(crime, focus_assault=focus_assault)
@@ -182,15 +182,20 @@ def build_case(seed=0, *, focus_assault=0):
             "Fouiller la poubelle", n.id, "bin:" + n.id, ("bin:" + n.id,)))
         objects["search_bin:" + n.id] = found
     # Coarse HIDDEN indoors really stays indoors, rather than becoming a helpful
-    # bin in an unrelated street. A cupboard can also be searched without CCTV.
-    if evidence.disposal and evidence.disposal.container == "cupboard":
+    # bin in an unrelated street. Every home has a cupboard to search, so the one
+    # that hides something never stands out in a menu.
+    for n in crime.streets.nodes:
+        if n.kind is not NodeKind.HOME:
+            continue
         d = evidence.disposal
-        key = "cupboard:" + d.place
-        add(key, "container", "Un objet a été dissimulé derrière le fond d'un placard : " +
-            next(t.kind.label for t in crime.inventory if t.id == d.tool) + ".", "weapon_disposition")
-        actions.append(DiscoveryAction("search_cupboard", Operation.SEARCH, "Examiner le fond du placard",
-            d.place, "cupboard:" + d.place, (key,)))
-        objects["search_cupboard"] = (d.tool,)
+        found = (d.tool,) if d and d.place == n.id and d.container == "cupboard" else ()
+        key = "cupboard:" + n.id
+        add(key, "container", "Un objet a été dissimulé derrière le fond d'un placard : "
+            + next(t.kind.label for t in crime.inventory if t.id == d.tool) + "." if found else
+            "Rien derrière le fond du placard : du linge et des boîtes.", "weapon_disposition" if found else key)
+        actions.append(DiscoveryAction("search_cupboard:" + n.id, Operation.SEARCH, "Examiner le fond du placard",
+            n.id, key, (key,)))
+        objects["search_cupboard:" + n.id] = found
     start, end = crime_window(crime)
     add("medical_window", "chronology", f"Rapport du médecin légiste — hier, entre {clock(start)} et {clock(end)}.\n"
         + ("L'intoxication s'est produite pendant cette période. Le décès est postérieur à l'administration ; je ne peux pas dater celle-ci à la minute près."
@@ -238,7 +243,8 @@ def build_case(seed=0, *, focus_assault=0):
         seen = {v.person for v in visits}
         register = {}
         for p in evidence.presences:
-            if p.witness != keeper.id or p.person in seen or memory.random() < 0.5:
+            # At most two guests come to mind unprompted: the register narrows, it never closes the case.
+            if p.witness != keeper.id or p.person in seen or len(register) >= 2 or memory.random() < 1 - register_memory:
                 continue
             times = remembered_times(p)
             when = "entre " + spoken_time(times["start"]) + " et " + spoken_time(times["end"]) if times else "pendant le service"
@@ -284,29 +290,51 @@ def build_case(seed=0, *, focus_assault=0):
     return PlayCase(seed, crime, life, witnesses, evidence, plan, claims, objects, evenings, registrations)
 
 
-def sample_playable(seed=0, max_attempts=200, *, proof_family=None):
+PROFILES = {  # which thread should be the short one: assault witnesses, keepers' unprompted memory
+    "signalement": {"focus_assault": 2, "register_memory": 0.3},
+    "horaires": {"focus_assault": 0, "register_memory": 0.5},
+    "mixte": {"focus_assault": 1, "register_memory": 0.5},
+}
+
+
+def thread_profile(lengths):
+    """The family a case favours, from its thread lengths (None = incomplete)."""
+    big = 10 ** 6
+    sig, hor, mix = (lengths[f] if lengths[f] is not None else big for f in ("signalement", "horaires", "mixte"))
+    if mix >= big:
+        return None
+    if mix < min(sig, hor):
+        return "mixte"
+    return "signalement" if sig <= hor else "horaires"
+
+
+def sample_playable(seed=0, max_attempts=200, *, profile=None):
     """Reject unsolvable identity graphs; do not patch truth or pad clue masks.
+    Each seed also draws the thread it favours, so no single recipe wins every case.
     This is NOT a certification of a full causal reconstruction.
     """
-    family = proof_family or random.Random(f"proof-policy-v1:{seed}").choice(("accounts", "cross", "open"))
-    if family not in ("accounts", "cross", "open"):
-        raise ValueError("Unknown proof family")
+    from scenario_threads import family_lengths
+    profile = profile or random.Random(f"thread-profile-v1:{seed}").choice(tuple(PROFILES))
+    if profile not in PROFILES:
+        raise ValueError("Unknown thread profile")
+    fallback = None
     for attempt in range(max_attempts):
         candidate_seed = seed if attempt == 0 else f"{seed}:retry:{attempt}"
         try:
-            case = build_case(candidate_seed, focus_assault={"accounts": 2, "cross": 1, "open": 0}[family])
+            case = build_case(candidate_seed, **PROFILES[profile])
         except ValueError as error:
             if "non-assault crime" not in str(error):
                 raise
             continue
         graph = case.plan.graph()
-        keys = {a.id for a in case.plan.artifacts}
-        if family != "open":
-            kinds = {"testimony"} if family == "accounts" else {"testimony", "footage"}
-            keys = {a.id for a in case.plan.artifacts if a.kind in kinds}
-        if (graph.remaining(keys) == {case.crime.kernel.roles.author}
+        if not (graph.remaining({a.id for a in case.plan.artifacts}) == {case.crime.kernel.roles.author}
                 and len(case.evidence.presences) >= 2 and context_is_refutable(case)):
+            continue
+        if thread_profile(family_lengths(case)) == profile:
             return case
+        fallback = fallback or case
+    if fallback is not None:
+        return fallback
     raise ValueError("No playable case found within the rejection budget")
 
 
@@ -350,6 +378,7 @@ class PlaySession:
             from scenario_threads import deadline_minutes
             self.deadline = self.at + deadline_minutes(case, DIFFICULTY[difficulty])
         self.journal, self.found, self.prints, self.marks = [], set(), {}, {}
+        self.linked = set()  # objects the laboratory tied to the crime
         self.object_places, self.carried = {}, set()
         self.finished = False
         self.person_places = {pid: case.life.people[pid].home for pid in case.plan.population}
@@ -544,12 +573,18 @@ class PlaySession:
         self.found.update(discovered)
         for obj in discovered:
             self.object_places[obj] = source_place
-        if action.startswith("search_bin:") or action in ("collect_object", "search_cupboard"):
+        if action.startswith(("search_bin:", "search_cupboard:")) or action == "collect_object":
             self.carried.update(discovered)
         operation = next(a.operation for a in self.case.plan.actions if a.id == action)
         self._advance((3 if "search" in self.skills else 10) if operation is Operation.SEARCH else
                       3 if "rapport" in self.skills and operation in (Operation.INTERVIEW, Operation.VERIFY) else 5)
-        return "\n\n".join(row["text"] for row in rows)
+        text = "\n\n".join(row["text"] for row in rows)
+        # With the kit in hand, a household mug is lifted on the spot.
+        if "fingerprints" in self.skills:
+            for obj in sorted(discovered):
+                if obj.startswith("mug:") and obj not in self.prints:
+                    text += "\n\n" + self.object_label(obj) + " — " + self.fingerprint(obj)
+        return text
 
     def camera(self, hour, *, place=None):
         # Camera location is the source of the recording, not a teleport of the
@@ -621,10 +656,12 @@ class PlaySession:
         contacts = [c for c in self.case.evidence.contacts if c.object == obj]
         patterns = []
         for c in contacts:
-            # Only usable partial patterns shared by >=2 actual cast members;
-            # no unique print becoming a one-step criminal identity oracle.
+            # On a shared object, only partial patterns shared by >=2 cast members
+            # are usable: no unique print becoming a one-step identity oracle.
+            # A person's own mug reports their pattern whole; it only ever
+            # excludes them from an object they did not touch.
             members = {r.person for r in self.case.evidence.contacts if r.object.startswith("mug:") and r.ridge == c.ridge}
-            if len(members & self.case.plan.population) >= 2:
+            if obj.startswith("mug:") or len(members & self.case.plan.population) >= 2:
                 patterns.append(c.ridge)
         self.prints[obj] = tuple(sorted(set(patterns)))
         text = ("Empreinte partielle : " + ", ".join(self.prints[obj]) +
@@ -655,9 +692,29 @@ class PlaySession:
             text = "Le produit restant dans ce flacon est compatible avec la substance retrouvée dans le verre. Plusieurs flacons de ce produit existent : ce résultat n'identifie pas celui qui aurait été utilisé."
         else:
             text = "Aucune trace exploitable reliant cet objet aux prélèvements de l'affaire. Cela ne prouve pas qu'il n'a jamais été manipulé."
+        if surface is not None:
+            self.linked.add(obj)
         self._advance(20)
         self.journal.append({"id": key, "kind": "laboratory_contact", "text": self.object_label(obj) + " — " + text})
         return text
+
+    def print_exclusions(self):
+        """People whose own partial pattern is absent from an object the lab tied to the crime.
+
+        Public state only: the patterns lifted on that object and on each person's
+        household mug. A pattern too rare to compare (unique) excludes nobody."""
+        on_crime_objects = {obj: set(self.prints[obj]) for obj in self.linked if self.prints.get(obj)}
+        if not on_crime_objects:
+            return {}
+        patterns = set().union(*on_crime_objects.values())
+        result = {}
+        for pid in self.case.plan.population:
+            own = set(self.prints.get("mug:" + pid, ()))
+            if own and not own & patterns:
+                objects = ", ".join(self.object_label(obj) for obj in sorted(on_crime_objects))
+                result[pid] = (f"Empreinte personnelle : {', '.join(sorted(own))}. Sur {objects}, seulement : "
+                               f"{', '.join(sorted(patterns))}. Cette personne n'a pas tenu l'objet.")
+        return result
 
     def object_label(self, obj):
         if obj.startswith("mug:"):
@@ -691,7 +748,7 @@ class PlaySession:
         """
         known = dict(self.state.known)
         profiles = {c["profile"]: c for key, c in self.case.claims.items() if key in known and "profile" in c}
-        remaining = set(self.case.plan.population) - self.cleared - self.register_entries().keys()
+        remaining = set(self.case.plan.population) - self.cleared - self.register_entries().keys() - self.print_exclusions().keys()
         for key, claim in self.case.claims.items():
             if key not in known:
                 continue
@@ -717,6 +774,8 @@ class PlaySession:
                                 "text": f"Le personnel de {self.locations[entry['place']]} se souvient de cette personne à sa table pendant toute la période."})
         for pid in self.cleared:
             result[pid].append({"source": "accusation", "text": "Mis hors de cause après une accusation rejetée."})
+        for pid, text in self.print_exclusions().items():
+            result[pid].append({"source": "prints", "text": text})
         for key, claim in self.case.claims.items():
             if key not in known:
                 continue
@@ -881,7 +940,7 @@ HELP = """Commandes :
   lieux                         lieux, habitants et objets accessibles
   aller ID                      se déplacer (ID affiché dans lieux)
   voir                          actions numérotées du lieu
-  faire N                       effectuer une action affichée
+  faire N | faire MOT           effectuer une action affichée (numéro, ou un mot de son libellé)
   demander NOM AUTRE_NOM         questionner quelqu'un sur une autre personne
   question NOM SUJET             mobile / témoin / alibi / lien / métier / rdv
   camera HEURE                  caméra de ce quartier, hier, HEURE à HEURE+1
@@ -956,11 +1015,19 @@ def main(argv=None):
                 if any(cam.place == session.place for cam in case.evidence.cameras):
                     print("Caméra locale : camera HEURE (hier). Poubelle fouillable ci-dessus.")
             elif cmd == "faire":
-                i = int(rest[0])
                 options = menu(session)
-                if not 1 <= i <= len(options):
-                    raise ValueError("Numéro d'action invalide")
-                print(session.do(options[i - 1]["id"]))
+                if rest and rest[0].isdigit():
+                    i = int(rest[0])
+                    if not 1 <= i <= len(options):
+                        raise ValueError("Numéro d'action invalide")
+                    chosen = options[i - 1]
+                else:  # numbers shift as actions are consumed: a word from the label is stable
+                    words = [w.lower() for w in rest]
+                    hits = [o for o in options if all(w in o["label"].lower() for w in words)]
+                    if len(hits) != 1:
+                        raise ValueError("Précisez l'action : " + (" / ".join(o["label"] for o in hits) if hits else "aucune ne correspond"))
+                    chosen = hits[0]
+                print(session.do(chosen["id"]))
             elif cmd == "camera":
                 print(session.camera(int(rest[0])))
             elif cmd == "objets":

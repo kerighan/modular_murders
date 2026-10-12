@@ -15,7 +15,7 @@ from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v5"  # free accusations and a deadline; new investigations required
+VERSION = "causal-3d-v6"  # thread profiles, cupboards everywhere, print comparisons; new investigations required
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
          "search": "Fouille minutieuse · examiner les objets plus rapidement",
@@ -642,7 +642,7 @@ class CausalGame:
                 prop, title = "diary", "Agenda de la victime"
             elif row.id.startswith("search:"):
                 title = "Objets du logement"
-            elif row.id == "search_cupboard":
+            elif row.id.startswith("search_cupboard:"):
                 prop, title = "cupboard", "Placard"
             fixtures.setdefault(row.actor, {"id": row.actor, "name": title, "prop": prop,
                                             "object": True, "actions": []})

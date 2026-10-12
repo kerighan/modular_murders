@@ -48,7 +48,7 @@ godot --path godot -- --solo --legacy-engine  # previous offline engine
 The Android solo build also embeds the causal generator, with its own save file.
 The 3D adapter preserves actual routes, local/hour cameras, physical witnesses
 and objects, two skills, manual turns, notebook notes and replay persistence.
-Current APK: [v24 offline solo](godot/builds/nexus-city-solo-debug-v24.apk).
+Current APK: [v25 offline solo](godot/builds/nexus-city-solo-debug-v25.apk).
 Seven suspects, role-based service corroboration, acquired chronological timeline
 (`horaires` in the causal CLI), and optional source-specific investigation trails.
 New investigation required after v17; previous save retained separately.

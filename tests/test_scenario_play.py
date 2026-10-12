@@ -8,7 +8,7 @@ from scenario_kernel import romantic_triangles
 from scenario_life import Link, Message
 from scenario_evening import validate_evenings, validate_registrations, remembered_times, spoken_time
 from scenario_observations import DiscoveryState
-from scenario_play import PlaySession, build_case, sample_playable, context_is_refutable
+from scenario_play import thread_profile, PlaySession, build_case, sample_playable, context_is_refutable
 from scenario_playtest import play
 
 
@@ -311,14 +311,11 @@ def test_fingerprints_require_slot_and_a_physically_available_object(cases):
     with pytest.raises(ValueError, match="examiné"):
         s.fingerprint(mug)
     s.go(case.life.people[p].home)
-    s.do("search:" + s.place)
     before = s.remaining()
-    text = s.fingerprint(mug)
-    assert s.remaining() == before
+    text = s.do("search:" + s.place)  # with the kit, the household mug is lifted on the spot
+    assert mug in s.prints and s.remaining() == before
     assert "contact" in text or "Aucune empreinte" in text
-    for pattern in s.prints[mug]:
-        assert len({r.person for r in case.evidence.contacts if r.object.startswith("mug:") and r.ridge == pattern}
-                   & case.plan.population) >= 2
+    assert set(s.prints[mug]) == {next(r.ridge for r in case.evidence.contacts if r.object == mug)}
     with pytest.raises(ValueError, match="Déjà relevé"):
         s.fingerprint(mug)
     s.go(case.crime.scene)
@@ -402,13 +399,15 @@ def test_questions_about_people_are_bounded_and_not_remote(cases):
         assert "Je ne connais pas" in text
 
 
-@pytest.mark.parametrize("family", ("accounts", "cross", "open"))
-def test_authoring_can_offer_distinct_proof_routes(family):
-    case = sample_playable(7, proof_family=family)
-    graph = case.plan.graph()
-    if family != "open":
-        allowed = {"testimony"} if family == "accounts" else {"testimony", "footage"}
-        assert graph.remaining(a.id for a in case.plan.artifacts if a.kind in allowed) == {case.crime.kernel.roles.author}
+@pytest.mark.parametrize("profile", ("signalement", "horaires", "mixte"))
+def test_authoring_can_offer_distinct_proof_routes(profile):
+    from scenario_threads import family_lengths
+    case = sample_playable(7, profile=profile)
+    lengths = family_lengths(case)
+    assert thread_profile(lengths) == profile
+    if profile != "mixte":
+        assert lengths[profile] is not None
+    assert case.plan.graph().remaining(a.id for a in case.plan.artifacts) == {case.crime.kernel.roles.author}
     assert play(PlaySession(case))["won"]
 
 
@@ -452,9 +451,8 @@ def test_poison_residue_is_comparison_not_a_unique_flask_or_actor(cases):
     assert "Plusieurs flacons" in s.analyze_object(case.crime.execution.tool)
     assert s.remaining() == case.plan.population
 def test_poison_corroboration_does_not_invent_a_contact_observation_elsewhere():
-    case = sample_playable(6)
+    case = next(c for c in map(sample_playable, range(30)) if c.crime.method.value == "poisoned")
     s = PlaySession(case)
-    assert case.crime.method.value == "poisoned"
     for p in case.evidence.presences:
         s.place = case.life.people[p.person].home
         s.do("meet:" + p.person)

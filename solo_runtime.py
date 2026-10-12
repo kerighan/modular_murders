@@ -175,7 +175,13 @@ class SoloSession:
                 raise ValueError("équipement inconnu")
             if start not in self.game.starts(items):
                 raise ValueError("lieu de départ indisponible")
-            self.game.equip(0, items, start)
+            if self.engine == "causal":
+                difficulty = msg.get("difficulty", self.game.setup()["default_difficulty"])
+                if difficulty not in self.game.setup()["difficulties"]:
+                    raise ValueError("difficulté inconnue")
+                self.game.equip(0, items, start, difficulty)
+            else:
+                self.game.equip(0, items, start)
             events = self.game.start()
             self.equipped = True
             self._try_save()

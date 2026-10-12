@@ -8,14 +8,15 @@ from types import SimpleNamespace
 
 from scenario_crime import NodeKind
 from scenario_observations import Operation
-from scenario_play import PlaySession, clock, sample_playable, SERVICE_PARENTS
+from scenario_play import PlaySession, DIFFICULTY, clock, sample_playable, SERVICE_PARENTS
 from scenario_access import next_day_routines
 from scenario_means import Method
 from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v4"  # registers vouch for named guests; new investigations required
+VERSION = "causal-3d-v5"  # free accusations and a deadline; new investigations required
+DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
          "search": "Fouille minutieuse · examiner les objets plus rapidement",
          "rapport": "Contact humain · recueillir les témoignages plus rapidement",
@@ -51,6 +52,7 @@ class CausalGame:
         self.player = self.players[0]
         self.tick, self.history, self.starts_chosen = 0, [], []
         self.winner = None
+        self.difficulty, self.ending = "normal", ""
         self.speaker = None
         self.camera_block = None
         self.camera_place = None
@@ -77,12 +79,18 @@ class CausalGame:
 
     def setup(self):
         return {"items": ITEMS, "slots": 2, "free_starts": self.roots,
-                "paid_starts": {}, "default_start": self.case.crime.scene}
+                "paid_starts": {}, "default_start": self.case.crime.scene,
+                "difficulties": DIFFICULTIES, "default_difficulty": "normal"}
 
-    def equip(self, index, items, start):
+    def equip(self, index, items, start, difficulty="normal"):
         if index != 0 or start not in self.starts(items):
             raise ValueError("Départ indisponible")
-        self.session = PlaySession(self.case, tuple(items))
+        if difficulty not in DIFFICULTY:  # "libre" (no deadline) stays a test hook: setup() never offers it
+            raise ValueError("Difficulté inconnue")
+        # Free mode: any named person can be accused, a mistake costs time,
+        # and the deadline scales with the shortest thread of this case.
+        self.session = PlaySession(self.case, tuple(items), strict=False, difficulty=difficulty)
+        self.difficulty = difficulty
         self.session.place = start
         self.player.items, self.player.place = set(items), start
         self.starts_chosen = [start]
@@ -109,6 +117,18 @@ class CausalGame:
         self._cue("", person=self.person(pid), active=True)
         self.cue["stage"] = "greeting"
 
+    def ending_view(self):
+        """The closing card. Private truth is only consulted once the case is over."""
+        s = self.session
+        if not s.finished:
+            return None
+        if self.winner:
+            return {"won": True, "title": "Affaire résolue", "text": self.ending, "mistakes": s.mistakes}
+        closed = next((r["text"] for r in s.journal if r["id"] == "closed"), "L'affaire est classée sans suite.")
+        author = self.case.life.people[self.case.crime.kernel.roles.author]
+        return {"won": False, "title": "Affaire classée", "mistakes": s.mistakes,
+                "text": closed + "\n" + author.name + " ne sera jamais inquiété(e) : " + self.case.crime.method.label.lower() + ", et personne pour le prouver."}
+
     def start(self):
         victim = self.case.life.people[self.case.crime.kernel.roles.victim]
         text = f"On a retrouvé {victim.name} sans vie à {self.session.locations[self.case.crime.scene]}.\nLe lendemain, 8 h. Les lieux viennent d'être ouverts aux enquêteurs.\nSon domicile : {self.session.locations[victim.home]}."
@@ -120,7 +140,7 @@ class CausalGame:
     def snapshot(self):
         return {"generator": VERSION, "items": sorted(self.player.items),
                 "start": self.player.place if not self.starts_chosen else self.starts_chosen[0],
-                "history": self.history, "priced_from": self.priced_from}
+                "history": self.history, "priced_from": self.priced_from, "difficulty": self.difficulty}
 
     @classmethod
     def restore(cls, seed, name, data, equipped):
@@ -131,7 +151,7 @@ class CausalGame:
         # past costs, then apply the new rule only to subsequent live questions.
         game.priced_from = data.get("priced_from", len(data["history"]))
         if equipped:
-            game.equip(0, data["items"], data["start"])
+            game.equip(0, data["items"], data["start"], data.get("difficulty", "normal"))
             game.start()
             for index, key in enumerate(data["history"]):
                 game._legacy_question_replay = index < game.priced_from
@@ -436,7 +456,7 @@ class CausalGame:
         if s.place == "police":
             result.update({("accuse", int(pid[1:])): "Déposer le dossier : " + person.name
                            for pid, person in self.case.life.people.items()
-                           if pid in s.named_people()})
+                           if pid in s.named_people() and pid not in s.cleared})
         if self._legacy_wait_replay:
             result[("wait",)] = "Ancienne attente · 15 minutes"
         return result
@@ -457,7 +477,7 @@ class CausalGame:
         elif action == "end":
             self.tick += 1
             p.ap = 6
-            s.at += 15
+            s._advance(15)
             s.doorstep = None
             self.update_positions()
             if s.place in self.homes and self.occupants(s.place):
@@ -561,7 +581,7 @@ class CausalGame:
             self.camera_block = None
             self._cue("Archives vidéo de la ville. Quel quartier souhaitez-vous consulter ?", "Terminal vidéo", active=True)
         elif action == "wait":
-            s.at += 15 if len(key) == 1 else key[1]
+            s._advance(15 if len(key) == 1 else key[1])
             text = "Il est " + clock(s.at) + "."
             if s.place == "morgue":
                 text += " Le médecin légiste peut maintenant vous recevoir."
@@ -570,8 +590,9 @@ class CausalGame:
         elif action == "accuse":
             won, text = s.accuse("p" + str(key[1]))
             if won:
-                self.winner = p
+                self.winner, self.ending = p, text
             self._cue(text, "Commissariat")
+            self.cue["context"] = "Dossier accepté" if won else "Dossier rejeté"
         else:
             if action == "investigate":
                 text = s.do(key[1])
@@ -859,6 +880,8 @@ class CausalGame:
         progress = {"preuves": len(facts), "documents": sum(r["kind"] in ("correspondence", "diary", "relationship") for r in s.journal)}
         return {"engine": VERSION, "player": player.name, "active_player": player.name,
                 "tick": self.tick, "ap": player.ap, "clock": clock(s.at), "place": s.place, "region": self.parents.get(s.place, s.place),
+                "difficulty": self.difficulty, "deadline": clock(s.deadline) if s.deadline is not None else None, "time_left": s.time_left, "mistakes": s.mistakes,
+                "ended": self.ending_view(),
                 "items": sorted(player.items), "winner": self.winner.name if self.winner else None,
                 "grid": GRID, "adjacency": adjacency, "places": places, "outdoors": s.place in self.outdoors,
                 "scene_has_blood": any(t.kind.value == "victim_blood" for t in self.case.crime.traces),

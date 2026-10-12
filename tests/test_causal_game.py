@@ -22,8 +22,9 @@ def receive(session, kind="view", timeout=15):
 
 
 def fresh(seed=7, skills=("fingerprints", "lockpick")):
+    # Protocol bots are exhaustive, not fast: no deadline for them.
     game = CausalGame(seed, ["Ada"])
-    game.equip(0, skills, game.case.crime.scene)
+    game.equip(0, skills, game.case.crime.scene, "libre")
     return game
 
 
@@ -1104,3 +1105,87 @@ def test_generated_seeds_are_human_readable_at_both_boundaries(tmp_path, monkeyp
     finally:
         session.close()
         session.worker.join(3)
+
+
+# ---------------------------------------------------------------- free mode (v5)
+
+def name_someone(game, exclude=()):
+    """Ring a reachable door until a suspect introduces themself; returns their id."""
+    for pid in sorted(game.case.plan.population):
+        home = game.case.life.people[pid].home
+        if pid not in exclude and game.occupants(home):
+            travel(game, game.homes[home])
+            game.play(("ring", home))
+            game.play(("stop",))
+            return pid
+    pytest.skip("no suspect at home")
+
+
+def test_setup_offers_difficulties_and_the_view_carries_the_deadline():
+    game = CausalGame(7, ["Ada"])
+    setup = game.setup()
+    assert set(setup["difficulties"]) == {"facile", "normal", "difficile"} and setup["default_difficulty"] == "normal"
+    assert game.view(game.player)["deadline"] is None
+    game.equip(0, ("search", "rapport"), game.case.crime.scene, "difficile")
+    view = game.view(game.player)
+    assert view["difficulty"] == "difficile" and view["time_left"] >= 180 and view["mistakes"] == 0 and view["ended"] is None
+    assert view["deadline"] == clock(game.session.deadline)
+    with pytest.raises(ValueError):
+        game.equip(0, ("search", "rapport"), game.case.crime.scene, "impossible")
+
+
+def test_wrong_accusation_costs_time_clears_the_accused_and_survives_restore():
+    game = CausalGame(0, ["Ada"])
+    game.equip(0, ("search", "rapport"), game.case.crime.scene, "facile")
+    game.start()
+    author = game.case.crime.kernel.roles.author
+    wrong = name_someone(game, exclude=(author,))
+    travel(game, "police")
+    if not game.player.ap:
+        game.play(("end",))
+    assert ("accuse", int(wrong[1:])) in game.options()
+    before = game.session.time_left
+    game.play(("accuse", int(wrong[1:])))
+    view = game.view(game.player)
+    assert view["mistakes"] == 1 and view["time_left"] == before - 90 and view["winner"] is None and view["ended"] is None
+    assert view["conversation"]["context"] == "Dossier rejeté"
+    assert ("accuse", int(wrong[1:])) not in game.options()
+    restored = CausalGame.restore(0, "Ada", game.snapshot(), True)
+    assert restored.snapshot()["difficulty"] == "facile"
+    assert restored.view(restored.player) == view
+
+
+def test_deadline_closes_the_case_and_names_the_culprit_only_then():
+    game = CausalGame(0, ["Ada"])
+    game.equip(0, ("search", "rapport"), game.case.crime.scene, "difficile")
+    game.start()
+    author = game.case.life.people[game.case.crime.kernel.roles.author].name
+    while not game.session.finished:
+        assert game.view(game.player)["ended"] is None
+        game.play(("end",))
+    view = game.view(game.player)
+    assert view["ended"]["won"] is False and author in view["ended"]["text"] and view["time_left"] == 0
+    assert game.options() == {}
+    restored = CausalGame.restore(0, "Ada", game.snapshot(), True)
+    assert restored.view(restored.player) == view
+
+
+def test_right_accusation_wins_without_a_complete_file():
+    game = CausalGame(0, ["Ada"])
+    game.equip(0, ("search", "rapport"), game.case.crime.scene, "facile")
+    game.start()
+    author = game.case.crime.kernel.roles.author
+    home = game.case.life.people[author].home
+    if not game.occupants(home):
+        pytest.skip("culprit away from home")
+    travel(game, game.homes[home])
+    game.play(("ring", home))
+    game.play(("stop",))
+    travel(game, "police")
+    if not game.player.ap:
+        game.play(("end",))
+    game.play(("accuse", int(author[1:])))
+    view = game.view(game.player)
+    assert view["winner"] == "Ada" and view["ended"]["won"] is True and "Dossier établi" in view["ended"]["text"]
+    restored = CausalGame.restore(0, "Ada", game.snapshot(), True)
+    assert restored.view(restored.player) == view

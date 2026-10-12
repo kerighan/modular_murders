@@ -91,6 +91,11 @@ var setup_page: PanelContainer
 var setup_scroll: ScrollContainer
 var chosen := []  # items picked on the setup page
 var start_choice := ""
+var difficulty_choice := ""
+var difficulty_buttons := {}
+var end_page: PanelContainer  # the closing card, solved or closed unsolved
+var accuse_dialog: ConfirmationDialog
+var accuse_key: Array = []
 var item_buttons := {}
 var start_buttons := {}
 var start_btn: Button
@@ -115,6 +120,7 @@ var notebook_evidence: VBoxContainer
 var notebook_dossier: VBoxContainer
 var notebook_notes: VBoxContainer
 var notebook_leads: VBoxContainer
+var notebook_threads: VBoxContainer
 var notebook_contacts: VBoxContainer
 var notebook_timeline: VBoxContainer
 var notebook_tabs := {}
@@ -421,6 +427,8 @@ func _on_message(msg: Dictionary) -> void:
 			_draw()
 			if not view.has("setup"):
 				_present_feedback(previous)
+				if view.get("ended") != null:
+					_show_ending()
 		"events":
 			pending_events.append_array(msg["events"])
 		"challenge":
@@ -460,11 +468,16 @@ func _reset_solo_city() -> void:
 	equipped = false
 	chosen.clear()
 	start_choice = ""
+	difficulty_choice = ""
 	item_buttons.clear()
 	start_buttons.clear()
+	difficulty_buttons.clear()
 	if is_instance_valid(setup_page):
 		setup_page.queue_free()
 		setup_page = null
+	if is_instance_valid(end_page):
+		end_page.get_parent().queue_free()
+		end_page = null
 	interior.visible = false
 	inside_scene = false
 	cam.far = exterior_far
@@ -625,6 +638,10 @@ func _draw() -> void:
 		header.text += " · Seed %s · SOLO" % str(int(view.get("solo", {}).get("seed", SEED)))
 	if view.has("clock"):
 		header.text += " · " + str(view.clock)
+	if view.get("time_left") != null:
+		header.text += " · " + _countdown(int(view.time_left)) + " avant l'échéance"
+		if int(view.get("mistakes", 0)) > 0:
+			header.text += " · %d dossier%s rejeté%s" % [int(view.mistakes), "s" if int(view.mistakes) > 1 else "", "s" if int(view.mistakes) > 1 else ""]
 	if view["pending"] != null:
 		header.text += "   — en conversation avec %s" % view["pending"]
 	_draw_actions(street)
@@ -640,6 +657,9 @@ func _draw() -> void:
 	last_region = street
 	if interior.visible:
 		_draw_interior()
+
+func _countdown(minutes: int) -> String:
+	return "%d h %02d" % [minutes / 60, minutes % 60] if minutes >= 60 else "%d min" % minutes
 
 func _focus(here: String) -> void:
 	# inside an apartment, the camera glides onto it; back on the street, it shows the whole city
@@ -818,6 +838,69 @@ func _door_choices(region: String) -> Array:
 		choices.append({"label": view["places"][place]["label"], "hint": hint, "available": available, "callback": callback})
 	return choices
 
+func _confirm_accusation(key: Array) -> void:
+	# Filing a case is final for the accused: a rejected file clears them and costs 1 h 30.
+	var name := "cette personne"
+	for option in view.get("options", []):
+		if option[0] == key:
+			name = str(option[1]).get_slice(" : ", 1)
+	for row in view.get("notebook", []):
+		if int(row.id) == int(key[1]) and str(row.name) != "?":
+			name = str(row.name)
+	if accuse_dialog == null:
+		accuse_dialog = ConfirmationDialog.new()
+		accuse_dialog.theme = interface_theme
+		accuse_dialog.title = "Déposer le dossier"
+		accuse_dialog.ok_button_text = "Déposer le dossier"
+		accuse_dialog.cancel_button_text = "Pas encore"
+		accuse_dialog.get_ok_button().custom_minimum_size.y = 72 if phone_ui else 56
+		accuse_dialog.get_cancel_button().custom_minimum_size.y = 72 if phone_ui else 56
+		add_child(accuse_dialog)
+		accuse_dialog.confirmed.connect(func():
+			var pending := accuse_key.duplicate(true)
+			if not pending.is_empty():
+				_play_local(pending))
+		accuse_dialog.canceled.connect(func():
+			accuse_dialog.visible = false
+			accuse_key.clear()
+			dialogue.recover())
+	accuse_key = key.duplicate(true)
+	accuse_dialog.dialog_text = "Accuser %s devant le commissaire ?\nSi les charges ne tiennent pas, %s est mis(e) hors de cause et vous perdez 1 h 30." % [name, name]
+	accuse_dialog.popup_centered(Vector2i(640, 280))
+
+func _show_ending() -> void:
+	# The closing card: the verdict, then a fresh investigation.
+	if end_page != null or view.get("ended") == null:
+		return
+	var ended: Dictionary = view.ended
+	end_page = _page(str(ended.get("title", "Fin de l'enquête")))
+	var column: VBoxContainer = end_page.get_child(0)
+	column.add_theme_constant_override("separation", 18)
+	var verdict := Label.new()
+	verdict.text = str(ended.get("text", ""))
+	verdict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	verdict.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	verdict.add_theme_font_size_override("font_size", 18)
+	verdict.add_theme_constant_override("line_spacing", 6)
+	verdict.add_theme_color_override("font_color", Color("c0d0d8"))
+	column.add_child(verdict)
+	var summary := Label.new()
+	var mistakes := int(ended.get("mistakes", 0))
+	summary.text = "Tour %d · %s · %s" % [int(view.get("tick", 0)) + 1, str(view.get("clock", "")),
+		"aucun dossier rejeté" if mistakes == 0 else "%d dossier%s rejeté%s" % [mistakes, "s" if mistakes > 1 else "", "s" if mistakes > 1 else ""]]
+	summary.add_theme_color_override("font_color", Color("83e5b3") if ended.get("won", false) else Color("d9a269"))
+	column.add_child(summary)
+	var again := Button.new()
+	again.text = "Nouvelle enquête" if solo_mode else "Fermer"
+	again.custom_minimum_size.y = 72 if phone_ui else 56
+	again.pressed.connect(func():
+		if solo_mode:
+			_send({"type": "restart"})
+		elif is_instance_valid(end_page):
+			end_page.get_parent().queue_free()
+			end_page = null)
+	column.add_child(again)
+
 func _enter_place(place: String, key: Array) -> void:
 	enter_requested = place
 	_send({"type": "play", "key": key})
@@ -830,6 +913,10 @@ func _play_option(key: Array) -> void:
 	_send({"type": "play", "key": key})
 
 func _play_local(key: Array) -> void:
+	if key[0] == "accuse" and accuse_key.is_empty():
+		_confirm_accusation(key)
+		return
+	accuse_key.clear()
 	if key[0] == "move" and view.places.get(str(key[1]), {}).get("street") != null:
 		enter_requested = str(key[1])
 	if (key[0] == "interrogate" or key[0] == "ring" and typeof(key[1]) != TYPE_STRING) and not dialogue.visible:
@@ -951,6 +1038,26 @@ func _show_setup() -> void:
 		btn.toggled.connect(func(on: bool): _pick_start(place, on))
 		row.add_child(btn)
 		start_buttons[place] = btn
+	if setup.has("difficulties"):
+		var level_title := Label.new()
+		level_title.text = "\nDifficulté · temps accordé pour boucler l'enquête"
+		body.add_child(level_title)
+		var levels := HBoxContainer.new()
+		levels.add_theme_constant_override("separation", 8)
+		body.add_child(levels)
+		for level in setup["difficulties"]:
+			var btn := Button.new()
+			btn.text = level.capitalize() + "\n" + str(setup["difficulties"][level])
+			btn.custom_minimum_size = Vector2(160, 72 if phone_ui else 56)
+			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			btn.add_theme_font_size_override("font_size", 14)
+			btn.toggle_mode = true
+			btn.toggled.connect(func(on: bool): _pick_difficulty(level, on))
+			levels.add_child(btn)
+			difficulty_buttons[level] = btn
+		difficulty_choice = str(setup.get("default_difficulty", "normal"))
+		if difficulty_buttons.has(difficulty_choice):
+			difficulty_buttons[difficulty_choice].set_pressed_no_signal(true)
 	start_btn = Button.new()
 	start_btn.text = "Commencer"
 	start_btn.custom_minimum_size.y = 72 if phone_ui else 56
@@ -965,6 +1072,16 @@ func _pick_item(id: String, on: bool) -> void:
 	else:
 		chosen.erase(id)
 	_refresh_setup()
+
+func _pick_difficulty(level: String, on: bool) -> void:
+	# one level at a time; releasing the pressed one keeps it (a game always has a deadline)
+	if not on and difficulty_choice == level:
+		difficulty_buttons[level].set_pressed_no_signal(true)
+		return
+	difficulty_choice = level
+	for other in difficulty_buttons:
+		if other != level:
+			difficulty_buttons[other].set_pressed_no_signal(false)
 
 func _pick_start(place: String, on: bool) -> void:
 	start_choice = place if on else ""
@@ -988,7 +1105,10 @@ func _refresh_setup() -> void:
 
 func _start_game() -> void:
 	equipped = true
-	_send({"type": "equip", "items": chosen, "start": start_choice})
+	var message := {"type": "equip", "items": chosen, "start": start_choice}
+	if not difficulty_choice.is_empty():
+		message["difficulty"] = difficulty_choice
+	_send(message)
 	setup_page.queue_free()
 	setup_page = null
 
@@ -1217,10 +1337,10 @@ func _build_hud() -> void:
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 2)
 	reading.add_child(tabs)
-	for id in ["evidence", "leads", "timeline", "notes", "contacts", "people"]:
+	for id in ["threads", "evidence", "leads", "timeline", "notes", "contacts", "people"]:
 		var tab := Button.new()
 		tab.toggle_mode = true
-		tab.text = {"evidence": "Éléments", "people": "Fiche", "contacts": "Contacts", "leads": "Pistes", "timeline": "Horaires", "notes": "Notes"}[id]
+		tab.text = {"threads": "Fils", "evidence": "Éléments", "people": "Fiche", "contacts": "Contacts", "leads": "Pistes", "timeline": "Horaires", "notes": "Notes"}[id]
 		tab.custom_minimum_size = Vector2(0, 40)
 		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tab.add_theme_font_size_override("font_size", 13)
@@ -1248,9 +1368,10 @@ func _build_hud() -> void:
 	notebook_dossier = VBoxContainer.new()
 	notebook_notes = VBoxContainer.new()
 	notebook_leads = VBoxContainer.new()
+	notebook_threads = VBoxContainer.new()
 	notebook_contacts = VBoxContainer.new()
 	notebook_timeline = VBoxContainer.new()
-	for section in [notebook_evidence, notebook_dossier, notebook_notes, notebook_leads, notebook_contacts, notebook_timeline]:
+	for section in [notebook_evidence, notebook_dossier, notebook_notes, notebook_leads, notebook_threads, notebook_contacts, notebook_timeline]:
 		section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		section.add_theme_constant_override("separation", 18)
 		dossier.add_child(section)
@@ -1505,7 +1626,7 @@ func _on_dialogue_closed() -> void:
 	_check_exhausted()
 
 func _check_exhausted() -> void:
-	if view.is_empty() or view.has("setup") or view.get("pending") != null or view.get("winner") != null:
+	if view.is_empty() or view.has("setup") or view.get("pending") != null or view.get("winner") != null or view.get("ended") != null:
 		return
 	if int(view["ap"]) == 0 and not end_button.disabled and int(view["tick"]) != exhausted_tick:
 		exhausted_tick = int(view["tick"])
@@ -1545,6 +1666,7 @@ func _draw_notebook() -> void:
 	notebook_cards.clear()
 	_draw_notebook_notes()
 	_draw_notebook_leads()
+	_draw_notebook_threads()
 	_draw_notebook_contacts()
 	_draw_notebook_timeline()
 	var rows: Array = view["notebook"].duplicate(true)
@@ -1754,6 +1876,7 @@ func _set_notebook_tab(id: String) -> void:
 	notebook_dossier.visible = id == "people"
 	notebook_notes.visible = id == "notes"
 	notebook_leads.visible = id == "leads"
+	notebook_threads.visible = id == "threads"
 	notebook_contacts.visible = id == "contacts"
 	notebook_timeline.visible = id == "timeline"
 	for key in notebook_tabs:
@@ -2027,6 +2150,78 @@ func _draw_notebook_leads() -> void:
 			button.set_meta("lead_place", destination.place)
 			button.pressed.connect(_locate_note_place.bind(str(destination.place)))
 			destinations.add_child(button)
+
+func _draw_notebook_threads() -> void:
+	# The three investigation threads: what is done, what comes next, what waits.
+	for child in notebook_threads.get_children():
+		notebook_threads.remove_child(child)
+		child.queue_free()
+	var guide: Dictionary = view.get("threads", {})
+	if guide.is_empty() or not notebook_tabs.has("threads"):
+		return
+	var threads: Array = guide.get("threads", [])
+	notebook_tabs.threads.text = "Fils"
+	var status := "Échéance %s" % str(guide.get("deadline", view.get("deadline", "")))
+	if guide.get("time_left") != null:
+		status += " · %s restantes" % _countdown(int(guide.time_left))
+	status += " · %d personne%s encore possible%s" % [int(guide.get("remaining", 0)), "s" if int(guide.get("remaining", 0)) > 1 else "", "s" if int(guide.get("remaining", 0)) > 1 else ""]
+	if int(guide.get("mistakes", 0)) > 0:
+		status += " · %d dossier%s rejeté%s" % [int(guide.mistakes), "s" if int(guide.mistakes) > 1 else "", "s" if int(guide.mistakes) > 1 else ""]
+	var advice := "Chaque fil mène seul au coupable. Suivez celui qui vous ressemble, ou croisez-les. Le dossier se dépose au Commissariat ; un dossier rejeté coûte 1 h 30."
+	if guide.get("accusable", false):
+		advice = "Une seule personne reste possible : déposez le dossier au Commissariat."
+	elif not guide.get("missing", []).is_empty():
+		advice += "\nIl manque encore : " + ", ".join(guide.missing) + "."
+	_notebook_text(notebook_threads, status.to_upper(), advice, Color("8fd9d5"))
+	for thread in threads:
+		var card := PanelContainer.new()
+		card.set_meta("thread", thread.family)
+		var done := 0
+		for step in thread.steps:
+			if step.state == "done":
+				done += 1
+		var complete: bool = done == thread.steps.size()
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("122536")
+		style.border_color = Color("83e5b3") if complete else Color("d9a269")
+		style.border_width_left = 3
+		style.set_corner_radius_all(8)
+		style.set_content_margin_all(16)
+		card.add_theme_stylebox_override("panel", style)
+		notebook_threads.add_child(card)
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 6)
+		card.add_child(body)
+		var heading := Label.new()
+		heading.text = "%s · %d / %d" % [str(thread.title).to_upper(), done, thread.steps.size()]
+		heading.add_theme_font_size_override("font_size", 11)
+		heading.add_theme_color_override("font_color", Color("8fd9d5") if complete else Color("ebbe88"))
+		body.add_child(heading)
+		for step in thread.steps:
+			var mark: String = "✓" if step.state == "done" else "▶" if step.state == "next" else "·"
+			var line := Label.new()
+			line.text = mark + "  " + str(step.title)
+			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			line.add_theme_font_size_override("font_size", 16)
+			line.add_theme_color_override("font_color", Color("83e5b3") if step.state == "done" else Color("f1d9a8") if step.state == "next" else Color("6f8792"))
+			body.add_child(line)
+			var details := []
+			if step.get("note") != null and not str(step.note).is_empty():
+				details.append(str(step.note))
+			if step.state == "next":
+				for action in step.get("actions", []):
+					details.append("→ " + str(action))
+			if not details.is_empty():
+				var detail := Label.new()
+				detail.text = "\n".join(details)
+				detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				detail.add_theme_font_size_override("font_size", 14)
+				detail.add_theme_constant_override("line_spacing", 3)
+				detail.add_theme_color_override("font_color", Color("c0d0d8") if step.state == "next" else Color("8fa3ad"))
+				body.add_child(detail)
+				var pad := Control.new()
+				pad.custom_minimum_size.y = 4
+				body.add_child(pad)
 
 func _locate_residence(home: Dictionary) -> void:
 	# This is a camera shortcut, not a move or a free apartment entrance.

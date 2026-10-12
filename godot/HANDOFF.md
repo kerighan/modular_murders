@@ -1,5 +1,45 @@
 # Passation : client Godot
 
+## Mode libre dans le client : échéance, fils, accusation — v24 (12 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v24.apk`, versionCode 24 / `0.24-causal`.
+Moteur `causal-3d-v5` : les sauvegardes v23 et antérieures demandent une nouvelle enquête
+(le runtime le signale et repart proprement). Même certificat.
+
+Côté adaptateur (`causal_game.py`) :
+
+- `setup()` expose `difficulties` (`facile / normal / difficile` avec un libellé) et
+  `default_difficulty` ; `equip(0, items, start, difficulty)` crée la `PlaySession` en
+  mode libre (`strict=False`). Le message `equip` accepte `"difficulty"`, la sauvegarde
+  la conserve (`snapshot()["difficulty"]`) et la rejoue à l'identique. Un niveau caché
+  `libre` (aucune échéance) existe pour les bots de test exhaustifs ; `setup()` ne l'offre
+  jamais et le runtime refuse ce qui n'est pas dans `difficulties`.
+- `view` gagne `difficulty`, `deadline` (heure), `time_left` (minutes), `mistakes` et
+  `ended` (`null`, ou `{won, title, text, mistakes}` quand l'affaire est close : dossier
+  accepté, échéance dépassée). Le coupable n'est nommé qu'une fois l'affaire close.
+- Fin de tour et attente passent par `session._advance` : l'échéance coupe le jeu au tour
+  près, `options()` est alors vide.
+- Au Commissariat, « Déposer le dossier : X » existe pour toute personne nommée et pas
+  encore mise hors de cause. Un dossier rejeté coûte 90 minutes et retire X des options.
+  La réponse arrive comme `conversation` avec `context` « Dossier accepté / rejeté ».
+
+Côté client (`main.gd`) :
+
+- Page de préparation : rangée « Difficulté » (un niveau toujours sélectionné, `normal`
+  par défaut), envoyée avec `equip`.
+- En-tête : « 2 h 45 avant l'échéance » et « n dossier(s) rejeté(s) » le cas échéant.
+- Carnet : onglet **Fils** en tête, rendu de `view["threads"]` : ligne d'état (échéance,
+  temps restant, personnes encore possibles), puis trois cartes avec les étapes
+  ✓ faites / ▶ suivantes (actions en clair) / · à venir. Les onglets existants ne bougent pas.
+- Accusation : `_play_local(["accuse", id])` ouvre d'abord une `ConfirmationDialog`
+  (« Pas encore » rend la main au dialogue) ; la clé n'est envoyée qu'après confirmation.
+- Carte de fin : `view["ended"]` ouvre une page pleine (titre, verdict, tour/heure/erreurs,
+  « Nouvelle enquête » → `restart`). Elle disparaît au `reset`.
+
+Test natif : `tests/causal_threads_smoke.gd` (difficulté, compte à rebours, onglet Fils,
+confirmation d'accusation, carte de fin) avec captures `art/captures/causal-*-v24-18x9.png`.
+`stageNexusPython` embarque désormais `scenario_threads.py`.
+
 ## Fils d'enquête, registres, accusation libre — moteur v4 (12 octobre 2026, côté backend)
 
 Changements de règles dans `scenario_play.py`, à répercuter dans le client quand vous voudrez :
@@ -24,8 +64,8 @@ Changements de règles dans `scenario_play.py`, à répercuter dans le client qu
   Échéance en minutes (`session.deadline`, `time_left`), calculée depuis le fil le plus court ;
   accusation jamais refusée : une erreur coûte 90 minutes et met l'accusé hors de cause
   (`session.cleared`, `mistakes`), la bonne clôt l'affaire même sans agenda. Le dépassement
-  de l'échéance clôt l'affaire (journal `closed`). `strict=True` reste le défaut de
-  `causal_game.py` : à basculer quand l'interface d'accusation et le compte à rebours existeront.
+  de l'échéance clôt l'affaire (journal `closed`). Depuis la v24, `causal_game.py`
+  joue en mode libre (voir la section ci-dessus).
 
 Audit : `python scenario_threads.py --count 200` donne les longueurs par famille.
 

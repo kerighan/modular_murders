@@ -1,5 +1,16 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.24-causal** : `../builds/nexus-city-solo-debug-v24.apk`.
+Mode libre : difficulté choisie à la préparation (échéance large, serrée, très
+serrée), compte à rebours dans l'en-tête, onglet « Fils » du carnet (trois fils
+d'enquête avec l'étape suivante en clair), accusation au Commissariat de toute
+personne nommée après confirmation (un dossier rejeté coûte 1 h 30 et met la
+personne hors de cause), carte de fin (affaire résolue ou classée) puis nouvelle
+enquête. Moteur `causal-3d-v5` : les sauvegardes v23 et antérieures repartent
+sur une nouvelle enquête. Même signature. Pas de téléphone physique ; détails
+dans `../HANDOFF.md`.
+
+
 Version **0.23-causal** : `../builds/nexus-city-solo-debug-v23.apk`.
 Néon Bleu : corps et indices dans une allée dégagée, clients/contacts séparés,
 table déplacée, cibles tactiles distinctes et libellés courts. Objets fixes après

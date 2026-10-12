@@ -330,7 +330,7 @@ def context_is_refutable(case):
     return True
 
 
-DIFFICULTY = {"facile": 3.0, "normal": 2.2, "difficile": 1.6}  # deadline, as a multiple of the shortest thread
+DIFFICULTY = {"facile": 3.0, "normal": 2.2, "difficile": 1.6, "libre": None}  # deadline, as a multiple of the shortest thread; libre = none
 
 
 class PlaySession:
@@ -346,7 +346,7 @@ class PlaySession:
         self.state, self.at, self.place = DiscoveryState(), 1440 + 8 * 60, case.crime.scene
         self.strict, self.cleared, self.mistakes = strict, set(), 0
         self.deadline = None
-        if not strict:
+        if not strict and DIFFICULTY[difficulty] is not None:
             from scenario_threads import deadline_minutes
             self.deadline = self.at + deadline_minutes(case, DIFFICULTY[difficulty])
         self.journal, self.found, self.prints, self.marks = [], set(), {}, {}
@@ -901,7 +901,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Neon Noir — nouveau générateur causal, CLI expérimentale")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--skills", default="search,rapport", help="Deux parmi fingerprints,search,rapport")
-    parser.add_argument("--difficulte", default="normal", choices=sorted(DIFFICULTY), help="Échéance : large, serrée ou très serrée")
+    parser.add_argument("--difficulte", default="normal", choices=sorted(DIFFICULTY), help="Échéance : large, serrée, très serrée, ou libre (aucune)")
     parser.add_argument("--classique", action="store_true", help="Règles d'origine : pas d'échéance, accusation refusée tant que le dossier est incomplet")
     args = parser.parse_args(argv)
     try:

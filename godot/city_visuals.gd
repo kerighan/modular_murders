@@ -55,6 +55,20 @@ var building_forms := {}
 var campus_cell := Vector2i(-100, -100)
 var parcel_spans := {}
 var occupied_cells := {}
+# Street life: a few cars cruising the free lanes, and the skyrail train passing now and then.
+const CAR_SPEED := 1.9  # units per second: a block in about six seconds
+const TRAIN_SPEED := 7.5
+const TRAIN_INTERVAL := 34.0
+var grid_rows := 0
+var grid_cols := 0
+var free_vertical: Array[int] = []  # column lines (x = c * PITCH - PITCH / 2) no merged parcel crosses
+var free_horizontal: Array[int] = []
+var traffic: Array[Dictionary] = []
+var train: Node3D
+var train_span := 0.0
+var train_clock := 1.0  # the first train shows up as the city appears
+var train_direction := 1.0
+var train_running := false
 var muted_materials := {}
 var geometry_visibility := 1.0
 var streets := {}
@@ -167,6 +181,21 @@ func build(grid: Array) -> void:
 				suppressed_crossings.append(origin + Vector2i.DOWN)
 				suppressed_crossings.append(origin + Vector2i.ONE)
 	city_center = Vector3((cols - 1) * PITCH / 2.0, 0, (rows - 1) * PITCH / 2.0)
+	grid_rows = rows
+	grid_cols = cols
+	var blocked_columns := []
+	var blocked_rows := []
+	for id in parcel_spans:
+		if parcel_spans[id].x == 2:
+			blocked_columns.append(origins[id].x + 1)
+		else:
+			blocked_rows.append(origins[id].y + 1)
+	for c in cols + 1:
+		if c not in blocked_columns:
+			free_vertical.append(c)
+	for r in rows + 1:
+		if r not in blocked_rows:
+			free_horizontal.append(r)
 	_begin()
 	_box(city_center + Vector3(0, -0.16, 0), Vector3((cols + 4) * PITCH, 0.25, (rows + 4) * PITCH), Color("182433"), "road")
 	for r in range(-1, rows + 2):
@@ -195,6 +224,7 @@ func build(grid: Array) -> void:
 			make_place("district_%d_%d" % [c, r], at, true)
 	if "--no-transit" not in OS.get_cmdline_user_args():
 		_transit(cols)
+	_spawn_traffic(4 if "--low-fx" in OS.get_cmdline_user_args() else 9)
 	if "--low-fx" not in OS.get_cmdline_user_args():
 		for spec in [[Vector3(2.0, 0, 0.25), CYAN], [Vector3(1.0, 0, 1.25), PINK], [Vector3(2.0, 0, 1.7), AMBER]]:
 			var light := OmniLight3D.new()
@@ -681,10 +711,11 @@ func _street_props(h: int, accent: Color, width: float = 7.6, depth: float = 7.6
 	_box(Vector3(2.91, 0.85, 1.82), Vector3(0.26, 0.5, 0.03), accent, "light")
 	for i in int(width / 1.35):
 		_box(Vector3(-width / 2.0 + 0.8 + i * 1.35, 0.43, depth / 2.0 - 0.17), Vector3(0.1, 0.5, 0.1), DARK)
-	_car(Vector3(-1.5, 0.01, depth / 2.0 + 1.1), h, false)
-	_car(Vector3(width / 2.0 + 1.1, 0.01, -1.0), h + 3, true)
+	# Parked along the kerb: the two lanes between the kerbs belong to the traffic.
+	_car(Vector3(-1.5, 0.01, depth / 2.0 + 0.45), h, false)
+	_car(Vector3(width / 2.0 + 0.45, 0.01, -1.0), h + 3, true)
 	if h % 2 == 0:
-		_car(Vector3(1.9, 0.01, depth / 2.0 + 3.3), h + 1, false)
+		_car(Vector3(1.9, 0.01, depth / 2.0 + 3.95), h + 1, false)
 
 func _person(at: Vector3, h: int, coat: Color = Color.TRANSPARENT) -> void:
 	var clothing := [Color("293645"), Color("454050"), Color("82736a"), Color("253e4b")][absi(h) % 4] as Color
@@ -805,17 +836,93 @@ func _transit(cols: int) -> void:
 	for i in cols + 2:
 		var x := -length / 2.0 + PITCH / 2.0 + i * PITCH
 		_box(Vector3(x, 1.25, 0), Vector3(0.45, 2.5, 0.45), CONCRETE.darkened(0.3))
-	# A stationary train is already assembled in a separate transform for later animation.
+	# The train lives in its own transform: animate() slides it along the viaduct.
 	_flush(root, "Viaduct")
-	var train := Node3D.new()
+	train = Node3D.new()
 	train.name = "Train"
 	root.add_child(train)
+	train_span = length / 2.0 + 10.0
+	train.position.x = -train_span
 	_begin()
-	_box(Vector3(0, 3.17, 0), Vector3(6.0, 0.53, 0.57), Color("495967"))
-	_box(Vector3(0, 3.48, 0), Vector3(5.85, 0.1, 0.55), DARK)
-	for i in 16:
-		_box(Vector3(-2.75 + i * 0.36, 3.24, 0.3), Vector3(0.26, 0.2, 0.025), CYAN * 0.7, "light")
+	for k in 2:  # two carriages
+		var x0 := -3.2 + k * 6.4
+		_box(Vector3(x0, 3.17, 0), Vector3(6.0, 0.53, 0.57), Color("495967"))
+		_box(Vector3(x0, 3.48, 0), Vector3(5.85, 0.1, 0.55), DARK)
+		for i in 16:
+			for z in [-0.3, 0.3]:
+				_box(Vector3(x0 - 2.75 + i * 0.36, 3.24, z), Vector3(0.26, 0.2, 0.025), CYAN * 0.7, "light")
+	for z in [-0.17, 0.17]:
+		_box(Vector3(6.25, 3.12, z), Vector3(0.05, 0.1, 0.1), Color("fff2c0"), "light")
+		_box(Vector3(-6.25, 3.12, z), Vector3(0.05, 0.1, 0.1), Color("ff3359"), "light")
+	_box(Vector3(0, 3.55, 0), Vector3(12.2, 0.05, 0.12), CYAN, "light")  # roof strip, visible from above
+	_box(Vector3(6.3, 3.3, 0), Vector3(0.06, 0.2, 0.34), Color("fff2c0"), "light")
 	_flush(train, "Carriage")
+
+func _spawn_traffic(count: int) -> void:
+	if free_vertical.is_empty() and free_horizontal.is_empty():
+		return
+	for i in count:
+		var node := Node3D.new()
+		node.name = "Car%d" % i
+		_begin()
+		_car(Vector3.ZERO, i * 5 + 2, false)
+		# Headlight beam on the wet street and a brighter rear: readable from the city view.
+		_box(Vector3(1.25, 0.012, 0), Vector3(1.4, 0.004, 0.62), Color("5c8696"), "light")
+		_box(Vector3(2.15, 0.011, 0), Vector3(0.5, 0.004, 0.8), Color("3b5661"), "light")
+		_box(Vector3(-0.56, 0.3, 0), Vector3(0.05, 0.08, 0.42), Color("ff3359"), "light")
+		_flush(node, "Traffic")
+		add_child(node)
+		var car := {"node": node}
+		_assign_route(car, true)
+		traffic.append(car)
+
+func _assign_route(car: Dictionary, scatter: bool) -> void:
+	# Right-hand traffic along one free street line, from beyond one edge of the city to the other.
+	var vertical := rng.randf() < 0.5 if not free_horizontal.is_empty() else true
+	if free_vertical.is_empty():
+		vertical = false
+	var line: int = free_vertical[rng.randi() % free_vertical.size()] if vertical else free_horizontal[rng.randi() % free_horizontal.size()]
+	var direction := 1.0 if rng.randf() < 0.5 else -1.0
+	var extent := (grid_rows if vertical else grid_cols) * PITCH
+	car.vertical = vertical
+	car.axis = line * PITCH - PITCH / 2.0
+	car.direction = direction
+	car.from = -1.6 * PITCH if direction > 0 else extent + 0.6 * PITCH
+	car.to = extent + 0.6 * PITCH if direction > 0 else -1.6 * PITCH
+	car.progress = rng.randf_range(0.0, 1.0) if scatter else 0.0
+	car.speed = CAR_SPEED * rng.randf_range(0.8, 1.15)
+	var node: Node3D = car.node
+	# The mesh faces +x; its right-hand side is +z, so the lane sits to the right of travel.
+	node.rotation.y = (-PI / 2.0 if direction > 0 else PI / 2.0) if vertical else (0.0 if direction > 0 else PI)
+	_place_car(car)
+
+func _place_car(car: Dictionary) -> void:
+	var along: float = lerpf(car.from, car.to, car.progress)
+	var lane: float = car.axis + (-0.95 if car.vertical else 0.95) * car.direction
+	var node: Node3D = car.node
+	node.position = Vector3(lane, 0.01, along) if car.vertical else Vector3(along, 0.01, lane)
+
+func animate(delta: float) -> void:
+	for car in traffic:
+		car.progress += car.speed * delta / absf(car.to - car.from)
+		if car.progress >= 1.0:
+			_assign_route(car, false)
+		else:
+			_place_car(car)
+	if train == null:
+		return
+	if train_running:
+		train.position.x += TRAIN_SPEED * train_direction * delta
+		if absf(train.position.x) >= train_span:
+			train_running = false
+			train_direction = -train_direction
+			train_clock = TRAIN_INTERVAL * rng.randf_range(0.8, 1.2)
+	else:
+		train_clock -= delta
+		if train_clock <= 0.0:
+			train_running = true
+			train.position.x = -train_span * train_direction
+			train.rotation.y = 0.0 if train_direction > 0 else PI
 
 func _begin() -> void:
 	batches = {}

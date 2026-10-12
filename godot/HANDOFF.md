@@ -1,5 +1,27 @@
 # Passation : client Godot
 
+## Vie de rue : circulation et train — v26 (12 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v26.apk`, versionCode 26 / `0.26-causal`, même moteur et
+même signature que la v25 (sauvegardes conservées). Purement visuel, dans `city_visuals.gd` :
+
+- `_spawn_traffic(n)` crée `n` voitures (9, 4 en `--low-fx`) comme nœuds individuels
+  (`Car0…`, maillages `Traffic_*`), chacune sur une ligne de rue libre de la grille
+  (`free_vertical` / `free_horizontal`, calculées dans `build()` en excluant les lignes que
+  traversent les parcelles fusionnées hôpital / rue Verlaine / cabaret). Circulation à droite :
+  la voie est à 0,95 u du centre de la rue, côté droit du sens de marche ; d'un bord de la
+  ville à l'autre puis nouvelle ligne tirée au sort. `CAR_SPEED` 1,9 u/s (un pâté en ~6 s).
+  Phares : faisceau au sol en matériau lumineux, feux arrière rouges.
+- Les voitures garées de `_street_props` serrent maintenant le trottoir (0,45 u du bord)
+  pour laisser les deux voies.
+- Train : `_transit` garde le nœud `Train` (deux voitures, bandeau de toit cyan, phare) ;
+  `animate(delta)` le fait traverser le viaduc à `TRAIN_SPEED` 7,5 u/s, puis attend
+  `TRAIN_INTERVAL` 34 s ±20 % et repart dans l'autre sens.
+- `main.gd::_process` appelle `visuals.animate(delta)` dès que la ville est posée.
+  `--shot-delay=S` règle le délai de la capture `--shot`.
+- Test natif `tests/street_life_smoke.gd` : voies respectées, voitures qui avancent, train en
+  cours de traversée, captures `causal-street-life-*` (vue quartier et vue large).
+
 ## Profils d'affaire, placards partout, empreintes comparables — moteur v6 (12 octobre 2026, côté backend)
 
 APK `builds/nexus-city-solo-debug-v25.apk`, versionCode 25 / `0.25-causal`, même certificat.

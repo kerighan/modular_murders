@@ -1,5 +1,13 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.26-causal** : `../builds/nexus-city-solo-debug-v26.apk`.
+Vie de rue : neuf voitures roulent lentement dans les voies libres de la grille
+(circulation à droite, phares au sol), les voitures garées serrent le trottoir,
+et le train du viaduc passe toutes les trente secondes environ en alternant le
+sens. Même moteur `causal-3d-v6` et même signature : les enquêtes v25 sont
+conservées.
+
+
 Version **0.25-causal** : `../builds/nexus-city-solo-debug-v25.apk`.
 Moteur `causal-3d-v6` : profils d'affaire tirés par seed (le fil le plus court
 change d'une enquête à l'autre), un placard à fouiller dans chaque logement,

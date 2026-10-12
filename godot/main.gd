@@ -199,7 +199,11 @@ func _ready() -> void:
 		header.text = "NEXUS CITY\nConnexion au serveur…"
 		ws.connect_to_url(server_url)
 	if "--shot" in OS.get_cmdline_user_args():  # screenshot for headless review, then quit
-		get_tree().create_timer(4.0).timeout.connect(_shot)
+		var delay := 4.0
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--shot-delay="):
+				delay = float(arg.trim_prefix("--shot-delay="))
+		get_tree().create_timer(delay).timeout.connect(_shot)
 
 func _shot() -> void:
 	if "--carnet" in OS.get_cmdline_user_args() and notebook_page != null:
@@ -281,6 +285,8 @@ func _art_overlay() -> void:
 
 func _process(delta: float) -> void:
 	_update_camera()
+	if dressed:
+		visuals.animate(delta)
 	if art_preview:
 		return
 	var protected := focus

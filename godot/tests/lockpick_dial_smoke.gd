@@ -97,5 +97,16 @@ func _run() -> void:
 		_fail("A hit in the arc must open the door and walk in")
 		return
 	await _capture("lockpick-inside")
-	print("Lockpick dial smoke OK: miss kept the door shut, hit opened it")
+	# Stepping out is free and puts you back on the street, hallway button included.
+	var street: String = client.view.places[home].street
+	var ap: int = int(client.view.ap)
+	client._leave_interior()
+	await _settle()
+	if client.view.place != street or int(client.view.ap) != ap:
+		_fail("Leaving the picked flat must step out onto its street for free")
+		return
+	if client._door_choices(street).is_empty():
+		_fail("Back on the street, the hallway doors must be offered again")
+		return
+	print("Lockpick dial smoke OK: miss kept the door shut, hit opened it, leaving steps out")
 	quit(0)

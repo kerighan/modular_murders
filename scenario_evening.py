@@ -153,11 +153,11 @@ def evening_account(crime, evidence, episodes, pid):
     activity = episode.activity[0].upper() + episode.activity[1:]  # no digital clock, no colon: spoken landmarks only
     presence = next((p for p in evidence.presences if p.person == pid), None)
     if presence:
-        keeper = next(k for k in crime.keepers if k.id == presence.witness)
         times = remembered_times(presence)
         when = f", entre {spoken_time(times['start'])} et {spoken_time(times['end'])}" if times else ", une partie de la soirée"
-        return (f"Jusqu'à {until}, j'étais chez moi. {activity}\n"
-                f"Ensuite, j'étais {at_place(presence.place)}{when}. {keeper.name} était de service ; il m'a vu à ma table.")
+        # No "the barman saw me": whoever said it was always right, so it read as a certificate.
+        # The detective asks the staff; the suspect only says where they were.
+        return f"Jusqu'à {until}, j'étais chez moi. {activity}\nEnsuite, j'étais {at_place(presence.place)}{when}."
     venue = next((v for v in crime.venue_presences if v.person == pid), None)
     if venue:
         return f"Jusqu'à {until}, j'étais chez moi. {activity}\nEnsuite, je suis passé {at_place(venue.place)}. Il y avait du monde."

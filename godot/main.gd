@@ -1499,6 +1499,13 @@ func _leave_interior() -> void:
 	interior.hide()
 	dialogue.hide()
 	_mount_notifications(false)
+	# Leaving a flat really steps out onto its street (free), so the street looks the same
+	# whether the flat was picked open or not: hallway button, doors, no shortcut.
+	var here: String = str(view.get("place", ""))
+	if view.has("engine") and here.begins_with("home") and view.places.get(here, {}).get("street") != null:
+		var route: Dictionary = view.get("routes", {}).get(view.places[here].street, {})
+		if route.get("available", false) and int(route.get("cost", 1)) == 0:
+			_play_local(route.key.duplicate(true))
 
 func _sync_interior_scene() -> void:
 	if lounge == null:

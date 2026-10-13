@@ -347,6 +347,8 @@ class CausalGame:
         return game
 
     def cost(self, place):
+        if self.session.place in self.homes and place == self.homes[self.session.place]:
+            return 0  # stepping out of a flat onto its own street is not a move
         streets = self.case.witnesses.streets
         origin = self.session.place if self.session.place in streets._adjacency else SERVICE_PARENTS[self.session.place]
         target = place if place in streets._adjacency else SERVICE_PARENTS[place]
@@ -416,7 +418,9 @@ class CausalGame:
                 continue
             person = self.source_person(a.actor, a.operation)
             mentioned = re.search(r"(?<!\w)" + re.escape(person["name"]) + r"(?!\w)", text)
-            if not mentioned and a.actor not in met and a.id not in s.state.completed:
+            # Once a suspect says where they spent the evening, the staff there is someone to see.
+            to_verify = a.id.startswith("verify:") and set(a.requires) <= dict(s.state.known).keys()
+            if not mentioned and not to_verify and a.actor not in met and a.id not in s.state.completed:
                 continue
             row = actors.setdefault(a.actor, {"id": a.actor, "name": person["name"], "role": person["role"],
                 "met": a.actor in met or a.id in s.state.completed,
@@ -606,6 +610,8 @@ class CausalGame:
             occupants = self.occupants(home)
             if street == s.place and occupants and "profile:" + occupants[0] in dict(s.state.known):
                 result[("ring", home)] = "Sonner"
+        if s.place in self.homes:
+            result[("walk", self.homes[s.place])] = "Sortir dans la rue (0 PA)"  # free, even with no point left
         if not p.ap:
             return result
         for place in s.locations:

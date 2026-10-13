@@ -1,5 +1,22 @@
 # Passation : client Godot
 
+## Sortir d'un appartement crocheté, alibi sans certificat — v48 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v48.apk`, versionCode 48 / `0.48-causal`, même moteur
+`causal-3d-v12` et même signature (sauvegardes conservées ; le texte des alibis change à la
+relecture). Deux retours de Maixent.
+
+- **Sortie d'un logement** : « Sortir » ne faisait que cacher le décor, le moteur restait dans
+  l'appartement ; la rue se dessinait alors depuis l'appartement (bouton bleu « Entrer » vers
+  lui, plus de bouton violet « Appartements » puisque `doors` est vide hors de la rue).
+  `causal_game.cost()` : logement → sa rue = 0 PA ; `main._leave_interior` joue ce `walk`
+  gratuit quand on quitte un logement. La rue est identique, appartement ouvert ou non ; y
+  rentrer depuis le couloir coûte 1 PA comme ailleurs. Smoke `lockpick_dial_smoke` étendu.
+- **Alibi** (`scenario_evening.evening_account`) : plus de « Le barman était de service ; il m'a
+  vu à ma table ». Audit 60 seeds : la phrase n'était dite que par des présences réelles (323
+  fois, 287 innocents couverts sur tout le créneau), donc un certificat gratuit. Le suspect dit
+  seulement où il était et quand ; c'est au personnel de confirmer.
+
 ## Jauge un poil plus vite — v47 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v47.apk`, versionCode 47 / `0.47-causal`, même moteur

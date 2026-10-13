@@ -27,9 +27,10 @@ func _run() -> void:
 	await _act(["investigate", "inspect_scene"])
 	client.dialogue.hide()
 	var home := ""
-	for door in client.view.doors:
-		if door.occupied:
-			home = door.place
+	for place in client.view.places:
+		if str(place).begins_with("home") and client.view.presence.places.get(place, {}).get("count", 0) > 0:
+			home = str(place)
+			break
 	_check(not home.is_empty(), "A resident at home is needed")
 	var street: String = client.view.places[home].street
 	await _go(street)
@@ -37,9 +38,7 @@ func _run() -> void:
 		await _act(["end"])
 	await _act(["ring", home])
 	_check(client.view.conversation.stage == "approach", "Ringing opens the approach")
-	client.dialogue._finish_reveal()
-	await _tap(client.dialogue.next_button)
-	_check(client.dialogue.selecting and _key_button("talk") != null, "The approach offers 'Lui parler'")
+	_check(client.dialogue.selecting and client.dialogue.speech.visible and _key_button("talk") != null, "The approach shows the look and 'Lui parler' together, no tap between")
 	_check(client.dialogue.next_button.text == "Quitter", "The next button leaves on the approach")
 	await _capture("approach-choice")
 	var ap: int = client.view.ap

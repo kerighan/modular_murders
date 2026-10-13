@@ -1,5 +1,24 @@
 # Passation : client Godot
 
+## Résumé de l'affaire, approche en un écran — v44 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v44.apk`, versionCode 44 / `0.44-causal`, même moteur
+`causal-3d-v11` et même signature (sauvegardes conservées).
+
+- **Résumé** (`causal_game.summary`, clé `view["summary"]`, liste `{title, text}`) : « L'affaire »
+  (victime, lieu, période et méthode une fois le légiste lu, domicile), « Signalement de
+  l'agresseur » (chaque trait appris avec sa source : témoin ou caméra), « Vus sur place hier
+  soir » (aperçus nommés ou décrits, avec qui l'a dit), « Preuves matérielles » (objets trouvés,
+  résultats du labo), « Suspects » (identifiés, écartés, états d'alibi), « Pistes ouvertes ».
+  Rien d'autre que le matériel acquis. Le client (`_draw_case_summary`) l'affiche en carte
+  cyan en tête de l'onglet Éléments, même journal vide. Demande de Maixent : de quoi reprendre
+  une partie quelques heures après.
+- **Approche** : la description du suspect et les boutons « Lui parler (1 PA) » / « Quitter »
+  apparaissent sur le même écran (plus de « Continuer » entre les deux) ; `rpg_dialogue` garde
+  `speech` visible avec les choix, panneau relevé à -410 / -430.
+- Smokes natifs `tests/summary_smoke.gd --seed=0` (capture `guidance-summary-*`) ;
+  `approach_ui_smoke` cherche le logement occupé via `presence.places`.
+
 ## Logements partagés sans indice — v43 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v43.apk`, versionCode 43 / `0.43-causal`, moteur

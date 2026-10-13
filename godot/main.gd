@@ -1889,6 +1889,24 @@ func _draw_notebook() -> void:
 				_notebook_text(past, str(answer.question).to_upper(), str(answer.text), Color("d9aa73"))
 	_update_notebook_summary()
 
+func _draw_case_summary() -> void:
+	# What we know, in a few lines: for whoever comes back to the case hours later.
+	var card := PanelContainer.new()
+	card.set_meta("case_summary", true)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("0f2a33")
+	style.border_color = Color("63e1ec")
+	style.border_width_left = 3
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(14)
+	card.add_theme_stylebox_override("panel", style)
+	notebook_evidence.add_child(card)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	card.add_child(body)
+	for section in view.get("summary", []):
+		_notebook_text(body, str(section.title).to_upper(), str(section.text), Color("8fd6d1"))
+
 func _set_notebook_tab(id: String) -> void:
 	notebook_tab = id
 	notebook_evidence.visible = id == "evidence"
@@ -1928,6 +1946,7 @@ func _notebook_note_title(note: Dictionary) -> String:
 func _draw_notebook_evidence() -> void:
 	var journal: Array = view.get("journal", []).filter(func(note): return note.get("category", "") != "person")
 	notebook_tabs.evidence.text = "Éléments · %d" % journal.size()
+	_draw_case_summary()
 	if journal.is_empty():
 		_notebook_text(notebook_evidence, "L'AFFAIRE COMMENCE ICI", "Vos découvertes, documents et témoignages prendront place ici. Les portraits à droite ouvrent les fiches individuelles.", Color("89b5c5"))
 		if not view.get("facts", []).is_empty():

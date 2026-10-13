@@ -207,8 +207,11 @@ func show_cue(cue: Dictionary, actions: Array) -> void:
 			_person(beat.person)
 			_set_text(str(beat.text), true)
 	elif cue.stage == "approach":
-		_set_text(cue.text, true)  # then "Lui parler (1 PA)" / "Quitter"
-		next_button.text = "Continuer  ▾"  # a narration, not an answer
+		# The detective's look and the choice on one screen: no tap between them.
+		_set_text(cue.text, false)
+		_show_options(true)
+		speech.show()
+		panel.offset_top = -430 if phone_ui else -410
 	elif cue.stage == "greeting":
 		_set_text("Choisissez votre première question.", false)
 		_show_options(true)

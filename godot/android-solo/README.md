@@ -1,7 +1,11 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.43-causal** : `../builds/nexus-city-solo-debug-v43.apk`, moteur `causal-3d-v11`
-(sauvegardes v42 archivées, nouvelle affaire). Un logement partagé porte le nom de tous ses
+Version **0.44-causal** : `../builds/nexus-city-solo-debug-v44.apk`, moteur `causal-3d-v11`
+(sauvegardes conservées). L'onglet Éléments s'ouvre sur le résumé de l'affaire (victime,
+lieu, heure du crime, signalement recueilli, preuves, suspects, pistes) ; l'approche d'un
+suspect montre sa description et « Lui parler (1 PA) » sur le même écran.
+
+Version 0.43 : moteur `causal-3d-v11` (sauvegardes v42 archivées, nouvelle affaire). Un logement partagé porte le nom de tous ses
 habitants, et vivre avec la victime n'est plus un indice : des innocents partagent aussi leur
 logement.
 

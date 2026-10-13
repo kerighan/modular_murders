@@ -231,6 +231,59 @@ class CausalGame:
         return {"won": False, "title": "Affaire classée", "mistakes": s.mistakes,
                 "text": closed + "\n" + author.name + " ne sera jamais inquiété(e) : " + self.case.crime.method.label.lower() + ", et personne pour le prouver."}
 
+    def summary(self, notebook, leads, labels, known):
+        """Everything the detective knows, in a few lines: for whoever comes back to a case
+        hours later. Only acquired material, never the hidden truth."""
+        s, case = self.session, self.case
+        victim = case.life.people[case.crime.kernel.roles.victim]
+        ids = {r["id"]: r for r in s.journal}
+        affair = [f"{victim.name} a été retrouvée sans vie {at_label(labels[case.crime.scene])}."]
+        if "medical_window" in known:
+            when = ids["medical_window"]["text"].split("\n")[0].replace("Rapport du médecin légiste — ", "").rstrip(".")
+            affair.append(f"Crime commis {when}, par {case.crime.method.label.lower()} (légiste).")
+        else:
+            affair.append("Heure du crime inconnue : demander l'examen du corps.")
+        affair.append("Son domicile : " + labels[victim.home] + ".")
+        traits_fr = {"coat": "manteau", "hair": "cheveux", "height": "taille"}
+        witnesses = {w.id: w.name for w in case.witnesses.witnesses}
+        seen = []
+        for r in s.journal:
+            claim = case.claims.get(r["id"]) or {}
+            if "description" in claim:
+                source = next((name for wid, name in witnesses.items() if wid in r["id"]), None) or ("caméra · " + labels.get(r["id"].split(":")[1], "") if r["id"].startswith("camera:") else "témoin")
+                seen.append(f"{traits_fr[claim['description']]} {claim['value']} ({source})")
+        parade = []
+        for r in s.journal:
+            claim = case.claims.get(r["id"]) or {}
+            if r["id"].startswith("observations:") and claim.get("sightings"):
+                speaker = case.life.people[r["id"].split(":")[1]].name
+                for row in claim["sightings"]:
+                    who = case.life.people[row["person"]].name if row.get("named", True) else "quelqu'un (" + ", ".join(row.get("traits", {}).values()) + ")"
+                    parade.append(f"{who} {at_label(labels[row['place']])} vers {spoken_time(row['minute'])}, selon {speaker}")
+        objects = sorted({s.object_label(obj) for obj in s.found})
+        facts = [r["text"].split("\n")[0] for r in s.journal if r["kind"] in ("laboratory", "laboratory_contact")]
+        remaining = s.remaining()
+        named = [row for row in notebook if row["name"] != "?"]
+        cleared = [row["name"] for row in named if "p" + str(row["id"]) not in remaining]
+        suspects = [f"{len(notebook)} personnes, {len(named)} identifiées."]
+        if cleared:
+            suspects.append("Écartées : " + ", ".join(cleared) + ".")
+        states = [f"{row['name']} · {row['alibi']}" for row in named if row["alibi"] and row["name"] not in cleared]
+        if states:
+            suspects.append("Alibis : " + " ; ".join(states) + ".")
+        open_leads = [lead["title"] for lead in leads if not lead.get("complete")]
+        sections = [("L'affaire", " ".join(affair))]
+        if seen:
+            sections.append(("Signalement de l'agresseur", " · ".join(seen)))
+        if parade:
+            sections.append(("Vus sur place hier soir", " · ".join(parade)))
+        if objects or facts:
+            sections.append(("Preuves matérielles", " · ".join(objects + facts)))
+        sections.append(("Suspects", " ".join(suspects)))
+        if open_leads:
+            sections.append(("Pistes ouvertes", " · ".join(open_leads[:5]) + (" …" if len(open_leads) > 5 else "")))
+        return [{"title": title, "text": text} for title, text in sections]
+
     def home_labels(self, known):
         """Place labels as the detective may say them: a home is named after the people
         identified there (the victim always), otherwise by its number."""
@@ -1083,7 +1136,8 @@ class CausalGame:
             "destinations": [{"place": "morgue", "label": labels["morgue"]}]})
         facts = [r["text"] for r in s.journal if r["kind"] in ("medical", "laboratory", "chronology", "laboratory_contact")]
         progress = {"preuves": len(facts), "documents": sum(r["kind"] in ("correspondence", "diary", "relationship") for r in s.journal)}
-        return {"engine": VERSION, "player": player.name, "active_player": player.name,
+        summary = self.summary(notebook, leads, labels, known)
+        return {"engine": VERSION, "summary": summary, "player": player.name, "active_player": player.name,
                 "tick": self.tick, "ap": player.ap, "clock": clock(s.at), "place": s.place, "region": self.parents.get(s.place, s.place),
                 "difficulty": self.difficulty, "deadline": clock(s.deadline) if s.deadline is not None else None, "time_left": s.time_left,
                 "turns_left": s.turns_left, "turn_minutes": TURN_MINUTES, "mistakes": s.mistakes,

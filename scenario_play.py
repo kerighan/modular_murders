@@ -321,7 +321,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
 
 
 PROFILES = {  # which thread should be the short one: assault witnesses, keepers' unprompted memory
-    "signalement": {"focus_assault": 2, "register_memory": 0.3, "partial_alibis": 0.45},
+    "signalement": {"focus_assault": 1, "register_memory": 0.3, "partial_alibis": 0.45},
     "horaires": {"focus_assault": 0, "register_memory": 0.5, "partial_alibis": 0.25},
     "mixte": {"focus_assault": 1, "register_memory": 0.5, "partial_alibis": 0.4},
 }

@@ -1,5 +1,13 @@
 # Passation : client Godot
 
+## Un seul témoin de l'acte — v32 (13 octobre 2026, côté backend)
+
+APK `builds/nexus-city-solo-debug-v32.apk`, versionCode 32 / `0.32-causal`, même signature.
+Seed 853 (Maixent) : deux témoins de la scène disaient la même chose. `WitnessBuilder` tire
+désormais des événements *distincts* (`rng.sample`) : jamais deux témoins du même acte ; le
+profil « signalement » passe à `focus_assault = 1`. Sur 120 affaires : zéro cas à deux témoins
+de l'acte, profils toujours 45 / 33 / 42, 19 empoisonnements.
+
 ## Jauge tournante : le crochetage pour tous — v31 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v31.apk`, versionCode 31 / `0.31-causal`, même signature.

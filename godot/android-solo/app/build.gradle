@@ -10,8 +10,8 @@ android {
         applicationId 'fr.nexuscity.solo'
         minSdk 24
         targetSdk 35
-        versionCode 31
-        versionName '0.31-causal'
+        versionCode 32
+        versionName '0.32-causal'
         ndk { abiFilters.addAll((project.findProperty('nexusAbis') ?: 'arm64-v8a').split(',')) }
     }
     sourceSets.main.assets.srcDir layout.buildDirectory.dir('nexusAssets')

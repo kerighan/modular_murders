@@ -434,8 +434,8 @@ class WitnessBuilder:
             if not choices:
                 raise ValueError("Cannot author an assault witness in a non-assault crime")
         count = focus_assault or self.rng.choice((1, 2, 2))
-        # Distinct people can witness the same act from different perspectives.
-        selected = tuple(self.rng.choice(choices) for _ in range(count))
+        # Never two witnesses of the same act: a second witness saw something else.
+        selected = tuple(self.rng.sample(choices, min(count, len(choices))))
         population = {p.id for p in crime.kernel.world.people} - {crime.kernel.roles.victim}
         for index, event in enumerate(selected):
             home = f"witness_home:{index}"

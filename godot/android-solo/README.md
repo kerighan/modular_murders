@@ -1,5 +1,11 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.32-causal** : `../builds/nexus-city-solo-debug-v32.apk`.
+Un seul témoin de l'acte sur la scène du crime ; un second témoin éventuel a
+vu autre chose (un départ, un passage). Même moteur, même signature,
+nouvelles affaires.
+
+
 Version **0.31-causal** : `../builds/nexus-city-solo-debug-v31.apk`.
 Jauge tournante : tout le monde peut crocheter une porte ; sans la
 compétence, une aiguille tourne et il faut toucher l'écran quand elle passe

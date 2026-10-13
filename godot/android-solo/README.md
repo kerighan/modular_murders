@@ -1,7 +1,9 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.46-causal** : `../builds/nexus-city-solo-debug-v46.apk`, moteur `causal-3d-v12`
-(sauvegardes v45 archivées, nouvelle affaire). Une affaire sur cinq est l'œuvre d'un inconnu :
+Version **0.47-causal** : `../builds/nexus-city-solo-debug-v47.apk`, moteur `causal-3d-v12`
+(sauvegardes conservées). L'aiguille de la jauge tourne un peu plus vite.
+
+Version 0.46 : moteur `causal-3d-v12` (sauvegardes v45 archivées, nouvelle affaire). Une affaire sur cinq est l'œuvre d'un inconnu :
 aucun lien avec la victime, et s'il l'a étudiée, la caméra de sa rue sur les jours précédents,
 la gardienne de l'immeuble et la sonnette de l'entrée en gardent la trace.
 

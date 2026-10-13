@@ -1,5 +1,12 @@
 # Passation : client Godot
 
+## Jauge un poil plus vite — v47 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v47.apk`, versionCode 47 / `0.47-causal`, même moteur
+`causal-3d-v12` et même signature (sauvegardes conservées). `timing_dial.gd` : vitesse de
+l'aiguille `lerpf(3.8, 6.8, difficulté)` au lieu de `(3.2, 6.0)`, soit +15 % (crochetage 0,55 :
+4,7 → 5,5 rad/s, un tour en 1,15 s) ; largeur de l'arc inchangée. Demande de Maixent.
+
 ## Prédation : l'inconnu qui a étudié sa proie — v46 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v46.apk`, versionCode 46 / `0.46-causal`, moteur

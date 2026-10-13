@@ -64,7 +64,7 @@ func _run() -> void:
 	_primary_questions()
 	await _capture("dialogue-primary")
 	await _question(["ask", "relation"])
-	_check(client.view.conversation.question.begins_with("Votre relation avec la victime ?"), "One tap must ask relationship directly")
+	_check(client.view.conversation.question.begins_with("Lien · Votre relation avec la victime ?"), "One tap must ask relationship directly")
 	client.dialogue._finish_reveal()
 	await _capture("dialogue-relation-answer")
 	await _return_to_questions()
@@ -110,16 +110,21 @@ func _run() -> void:
 			break
 	await _question(["ask", "circle"])
 	await _return_to_questions()
-	_check(client.view.ap == 0, "Four fresh informative questions should exhaust this real seed-7 route")
+	# The conversation paid one point for a batch of fresh questions; the box keeps count,
+	# a repeat is free, and past the batch the next fresh question carries the dial mark.
+	_check(int(client.view.conversation.remaining) == 0 and int(client.view.conversation.slots_total) > 0, "Four fresh questions must use up the batch")
+	_check("Questions" in client.dialogue.context.text, "The question counter must stay visible in the box")
 	var state: String = JSON.stringify(client.view.journal)
 	var time: String = client.view.clock
-	var blocked: Button = client.dialogue.choices.get_child(2)
-	_check(blocked.disabled, "Unasked witness question must be grey at zero PA")
-	await _tap(blocked)
-	_check(client.dialogue.selecting and client.view.ap == 0 and client.view.clock == time and JSON.stringify(client.view.journal) == state, "Disabled question should do nothing, not display a PA error")
-	await _capture("dialogue-zero-pa")
+	var pa_after: int = client.view.ap
+	var flagged := false
+	for option in client.view.dialogue_options:
+		if option[0] == ["ask", "observations"] and "⚡" in str(option[1]):
+			flagged = true
+	_check(flagged or "rapport" in client.view.items, "Past the batch, a fresh question is marked with the dial bolt")
+	await _capture("dialogue-budget-spent")
 	await _question(["ask", "relation"])
-	_check(client.view.ap == 0 and client.view.clock == time and JSON.stringify(client.view.journal) == state, "Already asked relation must be freely repeatable at zero PA")
+	_check(client.view.ap == pa_after and client.view.clock == time and JSON.stringify(client.view.journal) == state, "Already asked relation must be freely repeatable")
 	await _return_to_questions()
 	_primary_questions()
 	await _capture("dialogue-return")

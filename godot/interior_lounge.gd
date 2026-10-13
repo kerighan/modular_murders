@@ -22,6 +22,7 @@ var person_buttons := {}
 var staff_buttons := {}
 var fixture_buttons := {}
 var door_buttons := {}
+var door_meshes := {}  # place -> the door's own meshes, so a tap can swing it open
 var props: Node3D
 var entries := []
 var place := ""
@@ -382,26 +383,34 @@ func populate(view: Dictionary) -> void:
 		else:
 			staff_index += 1
 	var doors: Array = view.get("doors", [])
+	door_meshes.clear()
 	for i in doors.size():
 		var door: Dictionary = doors[i]
-		var row_count := mini(6, doors.size() - (i / 6) * 6)
-		var at := Vector3(((i % 6) - (row_count - 1) * 0.5) * 2.4, 0, -5.7 + (i / 6) * 3.0)
+		# Five doors on the back wall, well apart, then up to four along the side wall:
+		# a thumb must land on one door, not two, and no door sits in the middle of the floor.
+		var on_side := i >= 5
+		var back_count := mini(5, doors.size())
+		var at := Vector3(-8.0, 0, -1.6 + (i - 5) * 3.0) if on_side else Vector3((i - (back_count - 1) * 0.5) * 3.3, 0, -5.7)
+		var out := Vector3(1, 0, 0) if on_side else Vector3(0, 0, 1)  # which way the door faces
+		var along := Vector3(0, 0, 1) if on_side else Vector3(1, 0, 0)
+		var before_doors := props.get_child_count()
 		geometry._begin()
-		geometry._box(at + Vector3(0, 1.18, 0), Vector3(1.55, 2.36, 0.24), Color("594039"))
-		geometry._box(at + Vector3(0, 2.45, 0), Vector3(1.85, 0.18, 0.28), HOME, "light")
-		geometry._box(at + Vector3(0.56, 1.12, 0.18), Vector3(0.09, 0.18, 0.08), GOLD)
-		geometry._box(at + Vector3(0, 1.6, 0.16), Vector3(0.38, 0.22, 0.06), Color("b49366"))
+		geometry._box(at + Vector3(0, 1.18, 0), Vector3(0.24, 2.36, 1.55) if on_side else Vector3(1.55, 2.36, 0.24), Color("594039"))
+		geometry._box(at + Vector3(0, 2.45, 0), Vector3(0.28, 0.18, 1.85) if on_side else Vector3(1.85, 0.18, 0.28), HOME, "light")
+		geometry._box(at + along * 0.56 + Vector3(0, 1.12, 0) + out * 0.18, Vector3(0.08, 0.18, 0.09) if on_side else Vector3(0.09, 0.18, 0.08), GOLD)
+		geometry._box(at + Vector3(0, 1.6, 0) + out * 0.16, Vector3(0.06, 0.22, 0.38) if on_side else Vector3(0.38, 0.22, 0.06), Color("b49366"))
 		if not door.actions.is_empty():
 			for side in [-1, 1]:
-				geometry._box(at + Vector3(side * 0.7, 0.06, 0.9), Vector3(0.07, 0.025, 0.8), HOME, "guide")
+				geometry._box(at + along * (side * 0.7) + Vector3(0, 0.06, 0) + out * 0.9, Vector3(0.8, 0.025, 0.07) if on_side else Vector3(0.07, 0.025, 0.8), HOME, "guide")
 		geometry._flush(props, "ApartmentDoor")
+		door_meshes[str(door.place)] = {"at": at, "out": out, "along": along, "meshes": props.get_children().slice(before_doors)}
 		if door.get("answered", false):
 			for person in door.get("people", []):
-				var person_at := at + Vector3(0.35, 0, 1.4)
+				var person_at := at + along * 0.35 + out * 1.4
 				_actor(person_at, str(person.look), int(person.id), false, false, person.get("appearance", {}))
 				_add_target(person_at, str(person.name) if person.name != null else "Inconnu", person, true)
 		if not door.get("answered", false):
-			_add_target(at + Vector3(0, 0, 1.0), str(door.label), door, true)
+			_add_target(at + out * 1.0, str(door.label), door, true)
 	for i in view.get("fixtures", []).size():
 		var fixture: Dictionary = view.fixtures[i]
 		var slot: int = int(fixture.get("slot", i))
@@ -545,6 +554,24 @@ func _add_target(at: Vector3, title: String, person: Dictionary, clickable: bool
 	overlay.add_child(button)
 	targets.append({"at": at, "button": button})
 	entries.append({"kind": "entrance", "target": button})
+
+func open_door(place: String, then: Callable) -> void:
+	# The door slides aside, someone steps onto the threshold, and only then the talk begins.
+	var entry: Dictionary = door_meshes.get(place, {})
+	if entry.is_empty():
+		then.call()
+		return
+	var tween := create_tween().set_parallel()
+	var slide: Vector3 = entry.get("along", Vector3(1, 0, 0)) * 1.25
+	for mesh in entry.meshes:
+		if is_instance_valid(mesh):
+			tween.tween_property(mesh, "position", mesh.position + slide, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	var figure := _actor(entry.at + entry.get("along", Vector3(1, 0, 0)) * 0.35 + entry.get("out", Vector3(0, 0, 1)) * 1.4, "", -1, false, false, {})
+	if figure != null:
+		figure.scale = Vector3(0.01, 0.01, 0.01)
+		tween.tween_property(figure, "scale", Vector3.ONE, 0.35).set_delay(0.3)
+	tween.chain().tween_interval(0.25)
+	tween.chain().tween_callback(then)
 
 func _process(_delta: float) -> void:
 	if camera == null or not is_visible_in_tree():

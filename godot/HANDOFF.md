@@ -1,5 +1,38 @@
 # Passation : client Godot
 
+## Portes, questions lisibles, ⚡, couleurs des noms — v36 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v36.apk`, versionCode 36 / `0.36-causal`, même moteur et
+signature que la v35. Retours de Maixent après une session sur la v35.
+
+- **Couloir** (`interior_lounge.gd`) : cinq portes sur le mur du fond espacées de 3,3 u, les
+  suivantes sur le mur gauche (orientées +x) ; `door_meshes[place]` garde les maillages de
+  chaque porte ; `open_door(place, then)` fait coulisser la porte le long de son mur, fait
+  apparaître une silhouette sur le seuil puis appelle `then` (le `ring`). `main.gd` passe
+  `solo_busy` pendant l'animation.
+- **Questions** : libellés `Lien · / Alibi · / Témoin · / Mobile · / Métier · / Entourage · /
+  Agenda ·`, plus de « (1 PA, une fois) » ni « (gratuit) » ; `rpg_dialogue.gd` garde le compteur
+  « Questions 1/3 · 4 PA » même quand la cue fournit un `context`. Un ⚡ marque les actions qui
+  passeront par la jauge (question au-delà du budget sans `rapport`, empreintes sans la
+  compétence, crochetage sans la compétence) ; ces questions restent offertes à 0 PA.
+- **Couleurs dans le texte** : `view["highlights"]` (`victim`, `suspects` nommés, `evidence` =
+  objets en main) ; `rpg_dialogue._highlight` colore en BBCode (victime `#ff7889`, suspects
+  `#ffd386`, preuves `#63e1ec`), `bbcode_enabled` activé, crochets échappés.
+- **Alibi** : `alibi_state` renvoie `unverifiable` quand la soirée est connue mais qu'aucune
+  action `verify:` n'existe (« je suis resté chez moi ») ; vue « invérifiable », client
+  « INVÉRIFIABLE ».
+- **Ville** : commissariat à 0,72 de hauteur ; parcelles de décor plus petites (7,6 → 6,7 →
+  5,8), décalées, et une sur cinq devient un terrain vague (`_vacant_lot`).
+- **Approche d'un suspect** (`causal_game.open_questions`) : sonner ou toucher un suspect ouvre
+  d'abord une cue `stage = "approach"` : la voix du détective décrit la personne (« Le suspect
+  s'appelle Ada. Petite, manteau clair, cheveux blonds. », `describe(pid)`), gratuite, portrait
+  du suspect mais couleurs détective (`person.detective`). Options : `("talk",)` « Lui parler
+  (1 PA) » (seulement avec un PA) et `("stop",)` « Quitter ». `("talk",)` dépense le point,
+  ouvre les 3 questions (stage `greeting`). Pas de relecture dans la conversation : la fiche
+  suspect du carnet termine par un déroulant « Conversations passées · n » (`row.said`, liste
+  `{question, text}` dans l'ordre du journal). PNJ et personnel inchangés. Contexte client
+  « Approche · n PA ».
+
 ## Quartiers à identité, parcelles irrégulières — v35 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v35.apk`, versionCode 35 / `0.35-causal`, même moteur et

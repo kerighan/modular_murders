@@ -115,10 +115,15 @@ func _run() -> void:
 	await _capture("closed-doors")
 	var street: String = client.view.place
 	await _tap(client.lounge.door_buttons[home])
-	if client.view.place != street or client.view.doorstep != home or client.view.conversation.stage != "greeting" or not str(client.view.conversation.text).is_empty():
-		_fail("Ringing must open questions on the doorstep, not enter or auto-answer")
+	if client.view.place != street or client.view.doorstep != home or client.view.conversation.stage != "approach" or not str(client.view.conversation.text).begins_with("Le suspect"):
+		_fail("Ringing must open with the detective's look on the doorstep, not enter or auto-answer")
 		return
-	if client.dialogue.choices.get_child_count() != 5 or client.lounge.person_buttons.size() != 1:
+	await _capture("doorstep-approach")
+	await _act(["talk"])
+	if client.view.conversation.stage != "greeting":
+		_fail("Talking must open the questions")
+		return
+	if client.dialogue.choices.get_child_count() < 5 or client.lounge.person_buttons.size() != 1:
 		_fail("One resident must appear only on the doorstep, with uniform questions")
 		return
 	await _capture("doorstep-questions")

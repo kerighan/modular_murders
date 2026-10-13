@@ -24,8 +24,8 @@ ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les 
          "lockpick": "Crochetage · entrer dans les appartements inoccupés"}
 GRID = [["alley", "crime_scene", "victim_street", None, "promenade"],
         ["cctv", "bar", "police", None, None],
-        ["cabaret", "lab", "hospital", None, None],
-        [None, None, "restaurant", None, None]]
+        ["cabaret", "restaurant", "hospital", None, None],
+        [None, None, "lab", None, None]]  # the lab sits under the hospital, the Comptoir beside the Palace
 CAMERA_WINDOWS = {0: (18, "Avant 18 h"), 18: (20, "18 h – 20 h"),
                   20: (22, "20 h – 22 h"), 22: (24, "22 h – minuit")}
 
@@ -78,6 +78,7 @@ class CausalGame:
         self.note_turns = []
         self.questions_paid = set()
         self.slots = 0  # fresh questions left in the open conversation
+        self.approaching = False  # the detective sizes the suspect up before deciding to talk
         self.unlocked_homes = set()
         self.routines = next_day_routines(self.case)
         self.homes = {n.id: next(iter(self.case.witnesses.streets.neighbors(n.id)))[0]
@@ -123,17 +124,48 @@ class CausalGame:
         return not self.occupants(home) and (home in self.unlocked_homes or home == self.case.life.people[self.case.crime.kernel.roles.victim].home)
 
     def open_questions(self, pid):
-        # Talking to someone costs one action point and buys a few questions; with no
-        # point left, the conversation opens for rereads only.
+        # First the detective's own look at the person (free), then the choice: talk for
+        # one action point and a batch of questions, or leave. Past answers stay in the notebook.
         self.speaker = pid
         if "profile:" + pid not in dict(self.session.state.known):
             self.session.do("meet:" + pid)
-        if self.player.ap > 0:
-            self.player.ap -= 1
-            self.slots = QUESTIONS_PER_PA
-        else:
-            self.slots = 0
-        self._cue("", person=self.person(pid), active=True)
+        self.approaching = True
+        self.slots = 0
+        # The detective's voice over the suspect's id: the box keeps the person, the text is yours.
+        self._cue(self.describe(pid), person={**self.person(pid), "name": self.player.name, "detective": True}, active=True)
+        self.cue.update(stage="approach", context="Approche", slots_total=0)
+
+    def said(self, pid):
+        """Every answer this person gave, in order, with the question it answered."""
+        s = self.session
+        labels = {"relation": "Lien", "evening": "Alibi", "observations": "Témoin", "motive": "Mobile",
+                  "work": "Métier", "circle": "Entourage", "appointment": "Agenda", "messages": "Messages"}
+        by_reveal = {}
+        for topic, prefix in (("evening", "interview:"), ("observations", "observe:"), ("motive", "motive:"), ("messages", "ask_messages:")):
+            action = next((a for a in self.case.plan.actions if a.id == prefix + pid), None)
+            by_reveal.update({r: labels[topic] for r in (action.reveals if action else ())})
+        out = []
+        for r in s.journal:
+            if r["id"].startswith("context:" + pid + ":"):
+                out.append({"question": labels.get(r["id"].split(":")[2], "Question"), "text": r["text"]})
+            elif r["id"].startswith("about:" + pid + ":"):
+                out.append({"question": "Et " + self.case.life.people[r["id"].split(":")[2]].name + " ?", "text": r["text"]})
+            elif r["id"] in by_reveal and r["id"] != "profile:" + pid:
+                out.append({"question": by_reveal[r["id"]], "text": r["text"]})
+        return out
+
+    def describe(self, pid):
+        """What the detective sees: the name once given, and the three traits anyone can see."""
+        look = self.person(pid)["appearance"]
+        name = self.person(pid)["name"]
+        traits = f"{look['height'][0].upper() + look['height'][1:]}, manteau {look['coat']}, cheveux {look['hair']}."
+        return (f"Le suspect s'appelle {name}. " if name else "Cette personne ne vous a pas dit son nom. ") + traits
+
+    def start_talking(self):
+        self.approaching = False
+        self.player.ap -= 1
+        self.slots = QUESTIONS_PER_PA
+        self._cue("", person=self.person(self.speaker), active=True)
         self.cue["stage"] = "greeting"
 
     def spend_question(self):
@@ -381,6 +413,12 @@ class CausalGame:
             return {}
         if self.speaker is not None:
             options = {("stop",): "Fin de conversation"}
+            if self.approaching and self.speaker in self.case.plan.population:
+                options = {}
+                if p.ap > 0:
+                    options[("talk",)] = "Lui parler (1 PA)"
+                options[("stop",)] = "Quitter"
+                return options
             if self.speaker not in self.case.plan.population and self.speaker != "camera":
                 rows = list(s.options())
                 rows.extend({"id": a.id, "actor": a.actor, "operation": a.operation.value, "label": a.label}
@@ -434,25 +472,29 @@ class CausalGame:
                                     if p.ap and f"camera:{self.camera_place}:{h}" not in done})
                     options[("ask", "camera_back")] = "Autre plage horaire"
             else:
-                options[("ask", "relation")] = "Votre relation avec la victime ?"
+                options[("ask", "relation")] = "Lien · Votre relation avec la victime ?"
                 # Uniform menu and first-question costs, independent of guilt,
                 # relationship, message count and witness role. Replies may
                 # differ; the presence/absence of a button cannot be a clue.
-                options[("ask", "evening")] = "Alibi · Où étiez-vous hier soir ? (1 PA, une fois)"
-                options[("ask", "observations")] = "Témoin · Avez-vous remarqué quelque chose ? (1 PA, une fois)"
-                options[("ask", "motive")] = "Mobile · Y avait-il des tensions ? (1 PA, une fois)"
-                options[("ask", "work")] = "Votre travail ?"
-                options[("ask", "circle")] = "Qui fréquentait " + self.case.life.people[self.case.crime.kernel.roles.victim].name + " ?"
+                options[("ask", "evening")] = "Alibi · Où étiez-vous hier soir ?"
+                options[("ask", "observations")] = "Témoin · Avez-vous remarqué quelque chose ?"
+                options[("ask", "motive")] = "Mobile · Y avait-il des tensions ?"
+                options[("ask", "work")] = "Métier · Votre travail ?"
+                options[("ask", "circle")] = "Entourage · Qui fréquentait " + self.case.life.people[self.case.crime.kernel.roles.victim].name + " ?"
                 if "victim_diary" in dict(s.state.known) and self.case.claims["victim_diary"]["appointment"]:
-                    options[("ask", "appointment")] = "Le rendez-vous noté dans son agenda ?"
+                    options[("ask", "appointment")] = "Agenda · Le rendez-vous noté dans son agenda ?"
                 options.update({("talk_about", int(self.speaker[1:]), int(pid[1:])): person.name
                                 for pid, person in self.case.life.people.items() if pid != self.speaker})
             for key in list(options):
                 if key[0] not in ("ask", "talk_about") or key[1] == "service_status" or self.speaker == "camera":
                     continue
                 cost = self.question_cost(key)
-                options[key] = options[key].split(" (", 1)[0] + (" (1 PA)" if cost else " (gratuit)")
-                if cost > p.ap and not include_unavailable and not self._legacy_question_replay:
+                # Past the batch, a fresh question goes through the persuasion dial (⚡): a good
+                # hand makes it free, so it stays on offer even with no point left.
+                dial = cost > 0 and self.speaker in self.case.plan.population and "rapport" not in s.skills
+                granted = cost > 0 and self.speaker in self.case.plan.population and "rapport" in s.skills
+                options[key] = options[key].split(" (", 1)[0] + (" ⚡" if dial else " (1 PA)" if cost and not granted else "")
+                if cost > p.ap and not dial and not granted and not include_unavailable and not self._legacy_question_replay:
                     del options[key]
             return options
         result = {("end",): "Terminer le tour"}
@@ -492,13 +534,13 @@ class CausalGame:
             result[("ring", home)] = "Sonner" + (" (1 PA)" if any("profile:" + pid not in dict(s.state.known) for pid in self.occupants(home)) else "")
             if not self.occupants(home) and not self.home_open(home):
                 # Anyone may try the lock; the skill skips the timing dial.
-                result[("unlock_home", home)] = "Crocheter la porte (1 PA" + (")" if "lockpick" in s.skills else " · adresse)")
+                result[("unlock_home", home)] = "Crocheter la porte" + (" (1 PA)" if "lockpick" in s.skills else " ⚡ (1 PA)")
         if (s.place == "cctv" or self._legacy_camera_replay) and "scene_body" in dict(s.state.known):
             result[("camera_menu",)] = "Consulter les archives vidéo"
         for obj in sorted(s.found):
             if obj in s.carried or s.object_places[obj] == s.place:
                 if obj not in s.prints:  # anyone may try; without the training the dial decides
-                    result[("fingerprint", obj)] = "Relever : " + s.object_label(obj) + " (1 PA" + (")" if "fingerprints" in s.skills else " · adresse)")
+                    result[("fingerprint", obj)] = "Relever : " + s.object_label(obj) + (" (1 PA)" if "fingerprints" in s.skills else " ⚡ (1 PA)")
             if s.place == "lab" and obj in s.carried and not any(r["id"] == "surface:" + obj for r in s.journal):
                 surface = next((r for r in self.case.evidence.surfaces if r.object == obj), None)
                 required = "blood_reference" if surface and surface.kind == "victim_blood" else "drink_result" if surface else None
@@ -549,7 +591,7 @@ class CausalGame:
                 text = "Vous regagnez le couloir avant le retour des habitants."
         elif action == "stop":
             self.speaker, self.camera_block, self.camera_place = None, None, None
-            self.slots = 0  # the conversation is over; next time costs a point again
+            self.slots, self.approaching = 0, False  # the conversation is over; next time costs a point again
             s.doorstep = None
         elif action == "ring":
             people = self.occupants(key[1])
@@ -577,6 +619,8 @@ class CausalGame:
                 key = key + (round(score, 3),)
         elif action == "interrogate":
             self.open_questions("p" + str(key[1]))
+        elif action == "talk":
+            self.start_talking()
         elif action == "service_menu":
             self.speaker = key[1]
             row = next(a for a in self.staff_rows() if a.actor == self.speaker)
@@ -874,9 +918,9 @@ class CausalGame:
                                              "next": {**next_positions[pid], "label": labels[next_positions[pid]["place"]]}} if identified else None,
                              "deductions": deductions[pid] if identified else [],
                              "life": None, "relationship": {"claim": self.case.life.answer(pid), "reported": None, "witnesses": [], "contradiction": False} if any(r["id"] == "context:" + pid + ":relation" for r in s.journal) else None,
-                             "alibi": {"confirmed": "confirmé", "corroborated": "corroboré", "partial": "hors période", "on_site": "sur place", "reported": "à vérifier", "unknown": None}[s.alibi_state(pid)],
+                             "alibi": {"confirmed": "confirmé", "corroborated": "corroboré", "partial": "hors période", "on_site": "sur place", "reported": "à vérifier", "unverifiable": "invérifiable", "unknown": None}[s.alibi_state(pid)],
                              "corroboration": next((r["text"] for r in s.journal if r["id"] == "alibi:" + pid), None),
-                             "claim": next((r["text"] for r in s.journal if r["id"] == "evening:" + pid), None), "with": [], "said": []})
+                             "claim": next((r["text"] for r in s.journal if r["id"] == "evening:" + pid), None), "with": [], "said": self.said(pid)})
         acquired_places = {key: s.discovery_places.get(a.id, a.place) for a in self.case.plan.actions if a.id in s.state.completed for key in a.reveals}
         kind_labels = {"person": "rencontre", "footage": "images", "diary": "agenda", "testimony": "témoignage",
                        "scene": "constat", "reference": "identification", "sample": "prélèvement", "request": "demande d'examen",
@@ -993,6 +1037,9 @@ class CausalGame:
                 "pending": ("terminal vidéo" if self.speaker == "camera" else self.case.life.people[self.speaker].name if self.speaker in self.case.plan.population else self.source_person(self.speaker, Operation.INTERVIEW)["name"]) if self.speaker else None,
                 "conversation": self.cue, "notebook": notebook, "contacts": self.notebook_contacts(labels), "journal": journal, "leads": leads,
                 "network": self.network_view(),
+                # Words the dialogue box colours: the victim, the suspects it has named, the evidence in hand.
+                "highlights": {"victim": victim.name, "suspects": sorted(self.case.life.people[pid].name for pid in named),
+                               "evidence": sorted({s.object_label(obj) for obj in s.found})},
                 "story": {"window": next((r["text"] for r in s.journal if r["id"] == "medical_window"), None), "object": "objets examinés : " + str(len(s.found)) if s.found else None,
                           "object_status": "found" if s.carried else "not_reported"},
                 "facts": facts, "trusted": [], "progress": progress,

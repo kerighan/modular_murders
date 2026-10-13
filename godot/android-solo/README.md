@@ -1,5 +1,20 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.36-causal** : `../builds/nexus-city-solo-debug-v36.apk`. Toucher un suspect ouvre
+d'abord sa description par le détective, puis « Lui parler (1 PA) » ou « Quitter » ; ses
+réponses passées sont dans un déroulant en bas de sa fiche.
+Portes d'appartements espacées (cinq sur le fond, les autres sur le mur de
+gauche) ; toucher une porte la fait coulisser et apparaître la personne avant
+le dialogue. Questions préfixées de façon cohérente (Lien, Alibi, Témoin,
+Mobile, Métier, Entourage, Agenda), plus de « (gratuit) », compteur
+« Questions 1/3 · PA » visible, un ⚡ sur les actions qui déclenchent une
+jauge (et ces questions restent proposées à 0 PA). Dans les dialogues, la
+victime en rouge, les suspects nommés en or, les preuves en main en cyan.
+« Invérifiable » pour un récit que personne ne peut confirmer. Commissariat
+moins haut, banlieue aux parcelles irrégulières (plus petites, décalées,
+parfois un terrain vague). Même moteur, même signature, enquêtes conservées.
+
+
 Version **0.35-causal** : `../builds/nexus-city-solo-debug-v35.apk`.
 Quartiers avec une identité : couleur de base, accent, skyline et habillage
 propres (mâts et parabole aux Ondes, enseignes et guirlandes au Palace,

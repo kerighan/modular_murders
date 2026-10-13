@@ -13,7 +13,7 @@ const PALETTES := [Color("294c50"), Color("4c3548"), Color("354454"), Color("584
 # Each district has a face: its own base colour, accent, skyline and street dressing.
 const DISTRICT_STYLES := {
 	"cctv": {"theme": "ondes", "color": Color("2f4256"), "accent": Color("63b8ff"), "height": 1.25, "ground": Color("424c5c")},
-	"police": {"theme": "central", "color": Color("38485e"), "accent": Color("38dfff"), "height": 1.35, "ground": Color("4b5563")},
+	"police": {"theme": "central", "color": Color("38485e"), "accent": Color("38dfff"), "height": 0.72, "ground": Color("4b5563")},
 	"cabaret": {"theme": "palace", "color": Color("4e2e4a"), "accent": Color("ed43eb"), "height": 0.9, "ground": Color("4a4150")},
 	"alley": {"theme": "traverses", "color": Color("3d3340"), "accent": Color("ff7fa8"), "height": 0.85, "ground": Color("444654")},
 	"bar": {"theme": "neon", "color": Color("23404d"), "accent": Color("38dfff"), "height": 0.9, "ground": Color("3f4e5c")},
@@ -309,6 +309,16 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 	var parcel_width := (parcel.x - 1) * PITCH + 7.6
 	var parcel_depth := (parcel.y - 1) * PITCH + 7.6
 	geometry_origin = Vector3((parcel_width - 7.6) / 2.0, 0, (parcel_depth - 7.6) / 2.0)
+	if scenery:
+		# The outskirts are not a grid of equal slabs: smaller, shifted, sometimes just a lot.
+		parcel_width = 7.6 - float(h % 3) * 0.9
+		parcel_depth = 7.6 - float((h / 3) % 3) * 0.9
+		geometry_origin = Vector3(float(h % 5 - 2) * 0.3, 0, float((h / 5) % 5 - 2) * 0.3)
+		if h % 5 == 0:
+			_vacant_lot(h, parcel_width, parcel_depth)
+			_flush(root, "Streetscape")
+			building_forms[id] = {"root": root, "shape": "lot", "volumes": [], "meshes": [], "labels": [], "fade_materials": {}, "opacity": 1.0}
+			return root
 	_pavement(parcel_width, parcel_depth, style.get("ground", Color("485361")))
 	_street_props(h, accent, parcel_width, parcel_depth, scenery)
 	_corner_garden(h, parcel_width, parcel_depth)
@@ -754,6 +764,16 @@ func _district_dressing(theme: String, accent: Color, h: int, width: float, dept
 				_box(Vector3(bx, 2.85 + float(i % 2) * 0.66, depth / 2.0 + 0.02), Vector3(0.9, 0.4, 0.04), DARK)
 				_box(Vector3(bx, 2.7 + float(i % 2) * 0.66, depth / 2.0 - 0.1), Vector3(0.25, 0.14, 0.2), Color("3a6a4a"))
 			_box(Vector3(2.6, 0.45, depth / 2.0 - 1.1), Vector3(0.9, 0.5, 0.12), DARK)  # a bicycle, roughly
+
+func _vacant_lot(h: int, width: float, depth: float) -> void:
+	_box(Vector3(0, 0.06, 0), Vector3(width, 0.12, depth), Color("2c3a33"))
+	_box(Vector3(0, 0.13, 0), Vector3(width - 0.6, 0.03, depth - 0.6), GRASS.darkened(0.25))
+	for i in 3 + h % 3:
+		_tree(Vector3(rng.randf_range(-width * 0.4, width * 0.4), 0.14, rng.randf_range(-depth * 0.4, depth * 0.4)), h + i)
+	for x in [-width / 2.0, width / 2.0]:
+		for i in int(depth / 0.8):
+			_box(Vector3(x, 0.5, -depth / 2.0 + 0.4 + i * 0.8), Vector3(0.05, 0.8, 0.05), DARK)
+	_box(Vector3(width * 0.2, 0.9, -depth * 0.25), Vector3(2.0, 1.6, 0.9), Color("3a3442"))  # a shed
 
 func _car_park(h: int) -> void:
 	_box(Vector3(0, 0.06, 0), Vector3(7.6, 0.12, 7.6), Color("2a3340"))

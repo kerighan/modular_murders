@@ -55,6 +55,7 @@ func _approach(id: int) -> void:
 		if _card(id).whereabouts.current.place != destination:
 			continue
 		await _act(["interrogate", id] if parent == null else ["ring", destination])
+		await _act(["talk"])  # the detective's look first, then the point is spent
 		return
 	_check(false, "Known suspect could not be approached")
 

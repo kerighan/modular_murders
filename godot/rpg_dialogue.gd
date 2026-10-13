@@ -1,6 +1,8 @@
 extends Control
 ## Modal RPG conversation. Only server-supplied choices emit action keys.
 signal action_selected(key: Array)
+var highlights := {}  # {"victim": name, "suspects": [names], "evidence": [labels]} from the view
+var _word_regex := RegEx.new()
 signal closed
 
 const Avatar := preload("res://voxel_avatar.gd")
@@ -95,7 +97,7 @@ func _ready() -> void:
 	speech.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	speech.add_theme_font_size_override("normal_font_size", 20 if phone_ui else 19)
 	speech.add_theme_color_override("default_color", Color("e5f2f2"))
-	speech.bbcode_enabled = false
+	speech.bbcode_enabled = true  # names and evidence are coloured in the spoken text
 	column.add_child(speech)
 	# A tap on the actual text reveals it, but never chooses a question.
 	speech.gui_input.connect(func(event):
@@ -182,7 +184,11 @@ func show_cue(cue: Dictionary, actions: Array) -> void:
 	context.text = ("Questions %d/%d" % [used, total] + (" · %d PA" % remaining_pa if remaining_pa >= 0 else "")) if active and total > 0 else "%d question%s restante%s" % [cue.get("remaining", 0), "s" if cue.get("remaining", 0) != 1 else "", "s" if cue.get("remaining", 0) != 1 else ""] if active else "Fin de conversation"
 	if cue.has("context"):
 		context.text = str(cue.context)
-	if active and remaining_pa == 0 and int(cue.get("remaining", 0)) == 0:
+		if active and total > 0:  # the suspect's question budget stays in view
+			context.text += " · Questions %d/%d" % [used, total] + (" · %d PA" % remaining_pa if remaining_pa >= 0 else "")
+	if cue.stage == "approach":
+		context.text = "Approche" + (" · %d PA" % remaining_pa if remaining_pa >= 0 else "")
+	elif active and remaining_pa == 0 and int(cue.get("remaining", 0)) == 0:
 		context.text += " · Relecture gratuite"
 	reply_context = context.text
 	question.text = "Vous · " + str(cue.question) if cue.get("question") != null else ""
@@ -198,6 +204,9 @@ func show_cue(cue: Dictionary, actions: Array) -> void:
 			var beat: Dictionary = scene_beats.pop_front()
 			_person(beat.person)
 			_set_text(str(beat.text), true)
+	elif cue.stage == "approach":
+		_set_text(cue.text, true)  # then "Lui parler (1 PA)" / "Quitter"
+		next_button.text = "Continuer  ▾"  # a narration, not an answer
 	elif cue.stage == "greeting":
 		_set_text("Choisissez votre première question.", false)
 		_show_options(true)
@@ -236,7 +245,7 @@ func _set_text(text: String, animate: bool) -> void:
 		speech.add_text(text)
 		speech.pop()
 	else:
-		speech.text = text
+		speech.text = _highlight(text)
 	reveal = 0.0
 	reading = animate and not text.is_empty()
 	speech.visible_characters = 0 if reading else -1
@@ -245,6 +254,42 @@ func _set_text(text: String, animate: bool) -> void:
 	next_button.visible = true
 	next_button.disabled = false
 	next_button.text = "Afficher la réponse" if reading else "Continuer  ▾"
+
+func _highlight(text: String) -> String:
+	# The victim in red, the suspects already named in gold, evidence in hand in cyan.
+	var spans := []
+	var groups := [[str(highlights.get("victim", "")), "ff7889"], [highlights.get("suspects", []), "ffd386"], [highlights.get("evidence", []), "63e1ec"]]
+	for group in groups:
+		var terms = group[0] if group[0] is Array else [group[0]]
+		for term in terms:
+			var word := str(term)
+			if word.is_empty():
+				continue
+			_word_regex.compile("(?<![\\p{L}])" + _escape(word) + "(?![\\p{L}])")
+			for found in _word_regex.search_all(text):
+				var start := found.get_start()
+				var end := found.get_end()
+				var clash := false
+				for span in spans:
+					if start < span[1] and end > span[0]:
+						clash = true
+				if not clash:
+					spans.append([start, end, group[1]])
+	spans.sort_custom(func(a, b): return a[0] < b[0])
+	var out := ""
+	var cursor := 0
+	for span in spans:
+		out += text.substr(cursor, span[0] - cursor).replace("[", "[lb]")
+		out += "[color=#%s]%s[/color]" % [span[2], text.substr(span[0], span[1] - span[0])]
+		cursor = span[1]
+	out += text.substr(cursor).replace("[", "[lb]")
+	return out
+
+func _escape(word: String) -> String:
+	var out := ""
+	for ch in word:
+		out += ("\\" + ch) if ch in ".^$*+?()[]{}|\\" else ch
+	return out
 
 func _finish_reveal() -> void:
 	reading = false

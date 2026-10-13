@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from causal_game import CausalGame, ITEMS, CAMERA_WINDOWS, at_label
+from causal_game import CausalGame, ITEMS, CAMERA_WINDOWS, QUESTIONS_PER_PA, at_label
 from scenario_play import clock
 from scenario_evening import remembered_times
 from solo_runtime import SoloSession
@@ -87,6 +87,9 @@ def approach(game, pid):
         if game.session.person_places[pid] != place:
             return approach(game, pid)
         game.play(("interrogate", int(pid[1:])))
+    # The detective's look comes first; then talking costs the point.
+    if ("talk",) in game.options():
+        game.play(("talk",))
 
 
 def discover(game, action):
@@ -489,7 +492,7 @@ def test_every_suspect_has_the_same_menu_and_question_costs(seed):
             assert game.player.ap == before and game.slots == slots - 1
             game.play(("ask", topic))
             assert game.player.ap == before and game.slots == slots - 1
-        after = {k: label.split(" (", 1)[0].removesuffix(" · Reposer gratuitement")
+        after = {k: label.split(" (", 1)[0].removesuffix(" · Reposer gratuitement").removesuffix(" ⚡")
                  for k, label in game.options(True).items() if k[0] == "ask"}
         assert after == {k: label.split(" (", 1)[0] for k, label in menu.items()}
         game.play(("stop",))
@@ -541,13 +544,15 @@ def test_all_suspect_questions_cost_one_pa_once_and_repeat_free_at_zero(topic):
         game.play(key)
         assert game.cue["text"] == first and game.player.ap == 0
         assert (game.session.at, game.session.journal, game.tick) == before
-    disabled = next(("ask", t) for t in ("relation", "work", "circle") if t != topic)
-    assert disabled not in game.options()
+    # Past the budget with no point left, a fresh question is still offered: the dial decides.
+    other = next(("ask", t) for t in ("relation", "work", "circle") if t != topic)
+    assert game.options()[other].endswith("⚡")
     presentation = {tuple(row[0]): row[2] for row in game.view(game.player)["dialogue_options"]}
     assert presentation[key] == {"cost": 0, "available": True}
-    assert presentation[disabled] == {"cost": 1, "available": False}
-    with pytest.raises(ValueError, match="pas disponible"):
-        game.play(disabled)
+    assert presentation[other] == {"cost": 1, "available": True}
+    game.challenge = lambda kind, difficulty: 0.0  # a bad hand buys nothing
+    game.play(other)
+    assert game.cue["text"].startswith("Plus de PA")
     assert game.player.ap == 0 and (game.session.at, game.session.journal, game.tick) == before
 
 
@@ -563,12 +568,15 @@ def test_questions_about_each_other_person_are_individually_paid_and_repeatable(
     first, at, journal = game.cue["text"], game.session.at, list(game.session.journal)
     game.play(key)
     assert (game.cue["text"], game.session.at, game.session.journal) == (first, at, journal)
-    assert ("talk_about", a, c) not in game.options()
+    assert game.options()[("talk_about", a, c)].endswith("⚡")  # past the budget: the dial
     game.play(("stop",))
-    # Already met suspect: reopening itself gives no new information or cost.
+    # Already met suspect: with no point left, you may look but not talk.
     home = game.session.person_places["p%d" % a]
     game.play(("ring", home) if home in game.homes else ("interrogate", a))
-    assert game.player.ap == 0 and key in game.options()
+    assert game.player.ap == 0 and game.options() == {("stop",): "Quitter"}
+    game.player.ap = 1
+    game.play(("talk",))
+    assert game.player.ap == 0 and key in game.options() and game.question_cost(key) == 0
 
 
 def test_service_answers_are_repeatable_free_without_duplicate_notes_or_analysis():
@@ -793,7 +801,9 @@ def test_doorstep_is_not_an_apartment_entry_or_an_automatic_relation_answer():
     street = game.session.place
     game.play(("ring", home))
     assert game.session.place == street and game.session.doorstep == home
-    assert game.cue["stage"] == "greeting" and game.cue["text"] == "" and game.cue["question"] is None
+    assert game.cue["stage"] == "approach" and game.cue["text"].startswith("Le suspect") and game.cue["question"] is None
+    game.play(("talk",))
+    assert game.cue["stage"] == "greeting" and game.cue["text"] == ""
     assert not any("connaiss" in r["text"] for r in game.session.journal)
     door = next(d for d in game.view(game.player)["doors"] if d["place"] == home)
     assert door["answered"] and len(door["people"]) == 1
@@ -819,7 +829,7 @@ def test_lockpick_only_opens_an_empty_private_home_and_costs_a_skill_slot():
     assert restored.view(restored.player) == game.view(game.player)
     without = fresh(skills=("fingerprints", "search"))
     travel(without, without.homes[home])
-    assert "adresse" in without.options()[("unlock_home", home)]  # offered to all, the dial decides without the skill
+    assert "⚡" in without.options()[("unlock_home", home)]  # offered to all, the dial decides without the skill
 
 
 def test_next_day_positions_change_only_at_manual_turn_boundary():
@@ -1233,7 +1243,31 @@ def test_greeting_reveals_the_look_only_and_the_evening_waits_for_the_alibi_ques
     assert next(r["alibi"] for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:])) is None
     game.play(("ask", "evening"))
     assert "evening:" + pid in dict(game.session.state.known)
-    assert next(r["alibi"] for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:])) == "à vérifier"
+    assert next(r["alibi"] for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:])) in ("à vérifier", "invérifiable")
+
+
+def test_a_suspect_is_described_first_and_talking_is_the_paid_step():
+    game = fresh(0, ("search", "rapport"))
+    pid = sorted(game.case.plan.population)[0]
+    home = game.case.life.people[pid].home
+    travel(game, game.homes[home])
+    ap = game.player.ap
+    game.play(("ring", home))
+    look = game.person(pid)["appearance"]
+    assert game.cue["stage"] == "approach" and game.cue["person"]["detective"]
+    assert game.cue["text"].startswith("Le suspect s'appelle ") and look["coat"] in game.cue["text"]
+    assert game.options() == {("talk",): "Lui parler (1 PA)", ("stop",): "Quitter"}
+    assert game.player.ap == ap  # looking is free
+    game.play(("talk",))
+    assert game.cue["stage"] == "greeting" and game.player.ap == ap - 1 and game.slots == QUESTIONS_PER_PA
+    game.play(("ask", "relation"))
+    game.play(("ask", "work"))
+    game.play(("stop",))
+    said = next(r["said"] for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:]))
+    assert [a["question"] for a in said] == ["Lien", "Métier"]
+    game.player.ap = 0
+    game.play(("ring", home))
+    assert game.options() == {("stop",): "Quitter"}  # no point left: a look, no talk, no reread
 
 
 def test_anyone_may_pick_a_lock_through_the_dial_and_the_score_replays():

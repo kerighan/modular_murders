@@ -86,6 +86,7 @@ func _run() -> void:
 	else:
 		await _go(place)
 		await _act(["interrogate", 1])
+	await _act(["talk"])
 	await _act(["ask", "motive"])
 	await _act(["ask", "evening"])
 	await _act(["stop"])

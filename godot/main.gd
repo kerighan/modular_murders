@@ -526,7 +526,7 @@ func _present_feedback(previous: Dictionary) -> void:
 		selected_person = cue.person.duplicate(true)
 		dialogue.show_cue(cue, view.get("dialogue_options", view["options"]))
 		if notebook_changed:
-			var detail: String = str(cue.get("title", "Conversation conservée")) if cue.stage == "scene" else str(cue.notes[0]) if not cue.get("notes", []).is_empty() and cue.stage == "reply" else "Informations sur " + str(cue.person.name)
+			var detail: String = str(cue.get("title", "Conversation conservée")) if cue.stage == "scene" else str(cue.notes[0]) if not cue.get("notes", []).is_empty() and cue.stage == "reply" else str(cue.text) if cue.stage == "approach" else "Informations sur " + str(cue.person.name)
 			case_toasts.note("Carnet mis à jour", detail)
 	elif not pending_events.is_empty():
 		if action_context in ["move", "walk", "end", "", "equip"]:
@@ -639,6 +639,7 @@ func _draw() -> void:
 			marker.position += Vector3(1.5, 0, 0.15)
 			marker.create_tween().tween_property(marker, "position", arrival, 0.65).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		detectives.append(marker)
+	dialogue.highlights = view.get("highlights", {})
 	var pr: Dictionary = view["progress"]
 	header.text = "NEXUS CITY  /  %s\n%s · Tour %d · %d PA · %d preuves · %d documents" % [
 		_district_title(street), view["player"], view["tick"] + 1, view["ap"], pr["preuves"], pr.get("documents", 0)]
@@ -1577,7 +1578,14 @@ func _select_person(person: Dictionary) -> void:
 			return
 		for action in actions:
 			if action[0][0] == "ring" and actions.size() == 1:
-				_play_local(action[0].duplicate(true))
+				var ring: Array = action[0].duplicate(true)
+				if interior.visible and lounge.door_meshes.has(str(person.get("place", ""))):
+					solo_busy = true  # no double tap while the door opens
+					lounge.open_door(str(person.place), func():
+						solo_busy = false
+						_play_local(ring))
+				else:
+					_play_local(ring)
 				return
 		# Transport is a deliberate choice, not the side effect of tapping a body.
 		if actions.size() == 1 and actions[0][0][0] != "try_code" and actions[0][0] != ["investigate", "request_exam"]:
@@ -1755,7 +1763,7 @@ func _draw_notebook() -> void:
 		name_label.add_theme_color_override("font_color", Color("edd2a7") if identified else Color("79929e"))
 		identity_box.add_child(name_label)
 		var status := Label.new()
-		status.text = "ALIBI CONFIRMÉ" if row.alibi == "confirmé" else "RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "VRAI · HORS PÉRIODE" if row.alibi == "hors période" else "VU SUR LES LIEUX" if row.alibi == "sur place" else "FAITS INCOMPATIBLES" if not row.get("deductions", []).is_empty() else "À VÉRIFIER" if row.alibi == "à vérifier" else "NOM CITÉ" if identified and not row.get("profile_known", true) else "PISTE OUVERTE" if identified else "À IDENTIFIER"
+		status.text = "ALIBI CONFIRMÉ" if row.alibi == "confirmé" else "RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "VRAI · HORS PÉRIODE" if row.alibi == "hors période" else "VU SUR LES LIEUX" if row.alibi == "sur place" else "INVÉRIFIABLE" if row.alibi == "invérifiable" else "FAITS INCOMPATIBLES" if not row.get("deductions", []).is_empty() else "À VÉRIFIER" if row.alibi == "à vérifier" else "NOM CITÉ" if identified and not row.get("profile_known", true) else "PISTE OUVERTE" if identified else "À IDENTIFIER"
 		status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		status.add_theme_font_size_override("font_size", 11)
@@ -1860,12 +1868,10 @@ func _draw_notebook() -> void:
 				link_text += "\nSelon %s : %s" % [", ".join(relationship.witnesses), relationship.reported]
 			_notebook_text(body, "LIEN CONTESTÉ · À CONFRONTER" if relationship.contradiction else "LIEN AVEC LA VICTIME · SOURCES", link_text, Color("e4b27b"))
 		if row.claim != null:
-			var evening_title := "ALIBI · CONFIRMÉ" if row.alibi == "confirmé" else "SOIRÉE · RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "SOIRÉE · VRAI MAIS HORS PÉRIODE" if row.alibi == "hors période" else "SOIRÉE · VU SUR LES LIEUX" if row.alibi == "sur place" else "SOIRÉE · RÉCIT À VÉRIFIER"
+			var evening_title := "ALIBI · CONFIRMÉ" if row.alibi == "confirmé" else "SOIRÉE · RÉCIT CORROBORÉ" if row.alibi == "corroboré" else "SOIRÉE · VRAI MAIS HORS PÉRIODE" if row.alibi == "hors période" else "SOIRÉE · VU SUR LES LIEUX" if row.alibi == "sur place" else "SOIRÉE · INVÉRIFIABLE" if row.alibi == "invérifiable" else "SOIRÉE · RÉCIT À VÉRIFIER"
 			_notebook_text(body, evening_title, str(row.claim) + (" avec " + ", ".join(row["with"]) if not row["with"].is_empty() else ""), Color("b1c4ce"))
 		if row.get("corroboration") != null:
 			_notebook_text(body, "SOURCE INDÉPENDANTE · PROPOS RECUEILLIS", str(row.corroboration), Color("83e5b3"))
-		if not row.said.is_empty():
-			_notebook_text(secondary, "DÉCLARATIONS · NON PROUVÉES", "\n".join(row.said), Color("d9aa73"))
 		var next_section := 1
 		for section in body.get_children():
 			var heading: String = section.get_meta("notebook_heading", "")
@@ -1873,6 +1879,12 @@ func _draw_notebook() -> void:
 				body.move_child(section, next_section)
 				next_section += 1
 		body.move_child(secondary.get_parent(), body.get_child_count() - 1)
+		if not row.said.is_empty():
+			# everything they answered, in order: the conversation is over, the notebook remembers
+			var past := _notebook_fold(body, "Conversations passées · %d" % row.said.size())
+			past.get_parent().set_meta("past_conversations", int(row.id))
+			for answer in row.said:
+				_notebook_text(past, str(answer.question).to_upper(), str(answer.text), Color("d9aa73"))
 	_update_notebook_summary()
 
 func _set_notebook_tab(id: String) -> void:

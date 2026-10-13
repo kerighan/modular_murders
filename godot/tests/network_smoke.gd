@@ -67,6 +67,7 @@ func _run() -> void:
 			await _act(["ring", place])
 			if client.view.pending == null:
 				continue
+			await _act(["talk"])
 			var pid: int = int(client.view.conversation.person.id)
 			if pid in met:
 				await _act(["stop"])

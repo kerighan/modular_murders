@@ -622,7 +622,10 @@ class PlaySession:
             return "confirmed" if set(self.case.claims[key].get("requires", ())) <= known.keys() else "corroborated"
         if self.register_entries(pid):
             return "confirmed"
-        return "reported" if "evening:" + pid in known else "unknown"
+        if "evening:" + pid not in known:
+            return "unknown"
+        # "I stayed home": nobody can confirm or deny it. Say so, instead of "to check".
+        return "reported" if any(a.id == "verify:" + pid for a in self.case.plan.actions) else "unverifiable"
 
     def timeline(self):
         """Only the timestamps the player has actually heard or read."""

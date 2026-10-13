@@ -1,5 +1,23 @@
 # Passation : client Godot
 
+## Le commissariat a sa pièce — v41 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v41.apk`, versionCode 41 / `0.41-causal`, même moteur
+`causal-3d-v10` et même signature (sauvegardes conservées). Purement visuel. Référence
+fournie par Maixent : `art/references/precinct-neon-noir.png`.
+
+- `interior_lounge.gd` : `_build_precinct()` construit un nœud `Precinct` batché
+  (`PrecinctStatic`), affiché quand `place == "police"` (`is_police`, le salon générique et la
+  salle du bar sont cachés). Sol d'ardoise en damier 0,5 u avec trois nappes (ambre au comptoir,
+  cyan aux bureaux, rouge à la cellule) ; murs béton en panneaux, plinthe, deux tubes cyan ;
+  comptoir d'accueil (lampe, écran, dossiers, liseré doré) sous l'écusson et deux drapeaux ;
+  cellule à barreaux au fond à droite avec couchette et tube rouge ; casiers ; tableau
+  d'enquête (photos, punaises, ficelle rouge) ; trois bureaux avec écran cyan allumé, lampe,
+  chaise ; deux piliers à lanterne ; fontaine à eau ; trois OmniLight sans ombre.
+- Le commissaire se place comme le barman, derrière le comptoir en (-4,8, 0, -2,9) avec le halo
+  côté client (`is_police` dans `populate`).
+- Smoke natif `tests/precinct_smoke.gd --seed=0` (captures `guidance-precinct-*`).
+
 ## Un souvenir, pas un inventaire — v40 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v40.apk`, versionCode 40 / `0.40-causal`, même moteur

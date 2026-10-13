@@ -1,7 +1,10 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.40-causal** : `../builds/nexus-city-solo-debug-v40.apk`, moteur `causal-3d-v10`
-(sauvegardes conservées). La question « Témoin » raconte un souvenir, une ou deux personnes
+Version **0.41-causal** : `../builds/nexus-city-solo-debug-v41.apk`, moteur `causal-3d-v10`
+(sauvegardes conservées). Le commissariat a sa propre salle néon-noir : comptoir d'accueil
+sous l'écusson, cellule rouge, bureaux aux écrans allumés, tableau d'enquête.
+
+Version 0.40 : La question « Témoin » raconte un souvenir, une ou deux personnes
 avec ce qu'elles faisaient, au lieu d'une liste de noms.
 
 Version 0.39 : Corrige l'approche d'un suspect (le bouton « Lui parler (1 PA) »

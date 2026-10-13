@@ -13,6 +13,7 @@ var overlay: Control
 var stage: Node3D
 var geometry: Node3D
 var bar_room: Node3D
+var precinct: Node3D
 var figures: Node3D
 var exterior: Node3D
 var corridor: Node3D
@@ -33,12 +34,126 @@ func _ready() -> void:
 	stage.add_child(geometry)
 	_build_room()
 	_build_bar()
+	_build_precinct()
 	_build_exterior()
 	_build_corridor()
 	figures = Node3D.new()
 	stage.add_child(figures)
 	props = Node3D.new()
 	stage.add_child(props)
+
+func _build_precinct() -> void:
+	# Neon-noir precinct, after the reference sheet: slate floor, reception counter under the
+	# badge and flags, a holding cell in red, desks lit by their screens, the evidence board.
+	precinct = Node3D.new()
+	precinct.name = "Precinct"
+	stage.add_child(precinct)
+	var g := geometry
+	g._begin()
+	g._box(Vector3(0, -0.22, 0), Vector3(17, 0.4, 13), Color("151a22"))
+	for ix in 34:
+		for iz in 26:
+			var x := -8.25 + ix * 0.5
+			var z := -6.25 + iz * 0.5
+			var tint: Color = [Color("2a2f3a"), Color("262a33"), Color("30343f"), Color("23272f")][(ix * 5 + iz * 3) % 4]
+			var amber := maxf(0, 1.0 - Vector2(x + 4.8, z + 1.6).length() / 4.2)
+			var cyan := maxf(0, 1.0 - Vector2(x - 3.2, z - 0.8).length() / 4.6)
+			var red := maxf(0, 1.0 - Vector2(x - 6.6, z + 4.6).length() / 3.2)
+			tint = tint.lerp(Color("b07a3a"), amber * 0.45).lerp(Color("3fa6b3"), cyan * 0.40).lerp(Color("b33a4a"), red * 0.5)
+			g._box(Vector3(x, 0.005, z), Vector3(0.485, 0.035, 0.485), tint)
+	# Concrete walls in panels, a skirting rail, two cold tubes.
+	g._box(Vector3(0, 2.1, -6.4), Vector3(17, 4.2, 0.3), Color("262a33"))
+	g._box(Vector3(-8.3, 2.1, 0), Vector3(0.3, 4.2, 13), Color("282c35"))
+	for i in 9:
+		g._box(Vector3(-8.0 + i * 2.1, 2.1, -6.2), Vector3(0.06, 4.2, 0.06), Color("1b1f26"))
+	for i in 7:
+		g._box(Vector3(-8.1, 2.1, -6.0 + i * 2.1), Vector3(0.06, 4.2, 0.06), Color("1b1f26"))
+	g._box(Vector3(0, 0.35, -6.2), Vector3(17, 0.14, 0.06), Color("3a3f4a"))
+	g._box(Vector3(-8.1, 0.35, 0), Vector3(0.06, 0.14, 13), Color("3a3f4a"))
+	g._box(Vector3(0, 4.14, -6.1), Vector3(17, 0.18, 0.5), Color("171b22"))
+	g._box(Vector3(-8.1, 4.14, 0), Vector3(0.5, 0.18, 13), Color("171b22"))
+	for x in [-4.8, 2.0]:
+		g._box(Vector3(x, 3.75, -6.1), Vector3(1.6, 0.06, 0.06), CYAN, "light")
+	# Reception: the commissaire's counter, the badge and the flags above it.
+	g._box(Vector3(-4.8, 0.53, -1.8), Vector3(6.3, 1.06, 0.9), Color("3a2a22"))
+	g._box(Vector3(-4.8, 1.13, -1.8), Vector3(6.65, 0.15, 1.15), Color("5b4231"))
+	g._box(Vector3(-4.8, 0.62, -1.33), Vector3(6.3, 0.045, 0.05), GOLD, "light")
+	g._box(Vector3(-6.4, 1.6, -1.9), Vector3(0.12, 0.8, 0.12), Color("4a4035"))
+	g._box(Vector3(-6.4, 2.02, -1.9), Vector3(0.5, 0.22, 0.5), Color("7a5a2e"))
+	g._box(Vector3(-6.4, 1.9, -1.9), Vector3(0.3, 0.06, 0.3), GOLD, "light")
+	g._box(Vector3(-3.4, 1.5, -2.0), Vector3(0.62, 0.5, 0.08), Color("1b2129"))
+	g._box(Vector3(-3.4, 1.5, -1.95), Vector3(0.52, 0.4, 0.03), Color("63c7d6"), "light")
+	for i in 3:
+		g._box(Vector3(-5.5 + i * 0.5, 1.25, -1.75), Vector3(0.36, 0.08 + (i % 2) * 0.05, 0.3), Color("c9c2b0"))
+	g._box(Vector3(-4.8, 2.55, -6.15), Vector3(1.3, 1.5, 0.08), Color("1c2230"))
+	g._box(Vector3(-4.8, 2.55, -6.10), Vector3(1.1, 1.3, 0.04), Color("b8882f"))
+	g._box(Vector3(-4.8, 2.55, -6.06), Vector3(0.8, 0.95, 0.03), Color("1c2230"))
+	g._box(Vector3(-4.8, 2.55, -6.02), Vector3(0.3, 0.3, 0.03), GOLD, "light")
+	for x in [-6.3, -3.3]:
+		g._box(Vector3(x, 1.9, -5.95), Vector3(0.07, 3.8, 0.07), Color("8a7756"))
+		g._box(Vector3(x, 3.82, -5.95), Vector3(0.14, 0.14, 0.14), GOLD)
+		for i in 7:
+			var stripe := Color("b8303d") if i % 2 == 0 else Color("d9d3c7")
+			g._box(Vector3(x + 0.25, 3.5 - i * 0.16, -5.95), Vector3(0.42, 0.15, 0.06), stripe)
+		g._box(Vector3(x + 0.14, 3.42, -5.93), Vector3(0.2, 0.3, 0.05), Color("2b3b7a"))
+	# Holding cell: bars, a cot, a red tube that bleeds on the floor.
+	for i in 9:
+		g._box(Vector3(4.6 + i * 0.45, 1.5, -3.3), Vector3(0.06, 3.0, 0.06), Color("6c7380"))
+	for i in 7:
+		g._box(Vector3(4.6, 1.5, -6.2 + i * 0.47), Vector3(0.06, 3.0, 0.06), Color("6c7380"))
+	g._box(Vector3(6.5, 3.0, -3.3), Vector3(3.9, 0.1, 0.1), Color("7c838f"))
+	g._box(Vector3(4.6, 3.0, -4.75), Vector3(0.1, 0.1, 3.0), Color("7c838f"))
+	g._box(Vector3(6.6, 0.25, -5.4), Vector3(2.4, 0.5, 1.0), Color("39404a"))
+	g._box(Vector3(6.6, 0.56, -5.4), Vector3(2.3, 0.14, 0.9), Color("4a5160"))
+	g._box(Vector3(6.6, 3.55, -6.1), Vector3(2.2, 0.06, 0.06), Color("ff3a4f"), "light")
+	g._box(Vector3(4.9, 1.1, -3.3), Vector3(0.5, 2.2, 0.08), Color("4a505c"))
+	g._box(Vector3(5.05, 1.1, -3.22), Vector3(0.08, 0.2, 0.06), GOLD)
+	# Lockers, a water cooler, posters.
+	for i in 4:
+		g._box(Vector3(1.2 + i * 0.62, 1.1, -5.95), Vector3(0.58, 2.2, 0.6), Color("3b434f") if i % 2 == 0 else Color("343c47"))
+		g._box(Vector3(1.2 + i * 0.62, 1.6, -5.63), Vector3(0.2, 0.05, 0.03), CYAN, "light")
+	g._box(Vector3(-7.6, 0.5, 5.4), Vector3(0.5, 1.0, 0.5), Color("3b434f"))
+	g._box(Vector3(-7.6, 1.35, 5.4), Vector3(0.42, 0.7, 0.42), Color("4fb9d9"), "light")
+	for z in [1.2, 3.4]:
+		g._box(Vector3(-8.08, 2.2, z), Vector3(0.05, 1.0, 0.72), Color("c9c2b0"))
+		g._box(Vector3(-8.03, 2.35, z), Vector3(0.025, 0.5, 0.42), Color("5b5a63"))
+	# Evidence board: photos, pins, red string.
+	g._box(Vector3(0.9, 2.45, -6.15), Vector3(2.9, 1.8, 0.08), Color("5a4531"))
+	for i in 6:
+		g._box(Vector3(-0.3 + (i % 3) * 1.1, 2.9 - (i / 3) * 0.9, -6.09), Vector3(0.36, 0.42, 0.03), [Color("c9c2b0"), Color("9ba6b1"), Color("b9ad99")][i % 3])
+		g._box(Vector3(-0.3 + (i % 3) * 1.1, 3.1 - (i / 3) * 0.9, -6.06), Vector3(0.06, 0.06, 0.03), Color("ff3a4f"))
+	g._box(Vector3(0.25, 2.9, -6.04), Vector3(1.1, 0.025, 0.02), Color("ff3a4f"), "light")
+	g._box(Vector3(0.8, 2.45, -6.04), Vector3(0.025, 0.9, 0.02), Color("ff3a4f"), "light")
+	g._box(Vector3(1.35, 2.0, -6.04), Vector3(1.1, 0.025, 0.02), Color("ff3a4f"), "light")
+	# Detectives' desks: the screens light the room more than the ceiling does.
+	for desk in [Vector3(1.4, 0, 0.6), Vector3(5.6, 0, 1.6), Vector3(3.6, 0, 4.4)]:
+		for x in [-0.95, 0.95]:
+			g._box(desk + Vector3(x, 0.42, 0), Vector3(0.12, 0.84, 0.9), Color("3a3129"))
+		g._box(desk + Vector3(0, 0.9, 0), Vector3(2.2, 0.12, 1.1), Color("5b4231"))
+		g._box(desk + Vector3(-0.35, 1.25, -0.2), Vector3(0.7, 0.5, 0.08), Color("1b2129"))
+		g._box(desk + Vector3(-0.35, 1.25, -0.15), Vector3(0.6, 0.4, 0.03), Color("63c7d6"), "light")
+		g._box(desk + Vector3(-0.35, 1.0, 0.25), Vector3(0.5, 0.05, 0.2), Color("2a3039"))
+		g._box(desk + Vector3(0.6, 1.02, 0.1), Vector3(0.4, 0.12, 0.3), Color("c9c2b0"))
+		g._box(desk + Vector3(0.75, 1.3, -0.3), Vector3(0.1, 0.5, 0.1), Color("4a4035"))
+		g._box(desk + Vector3(0.75, 1.58, -0.3), Vector3(0.36, 0.14, 0.36), Color("7a5a2e"))
+		g._box(desk + Vector3(0.75, 1.5, -0.3), Vector3(0.22, 0.05, 0.22), GOLD, "light")
+		g._box(desk + Vector3(0, 0.3, 1.0), Vector3(0.55, 0.6, 0.55), Color("2b3140"))
+		g._box(desk + Vector3(0, 0.95, 1.22), Vector3(0.55, 0.7, 0.12), Color("353c4d"))
+	# Two square pillars, each with its own small lamp.
+	for at in [Vector3(-1.2, 0, -3.6), Vector3(7.2, 0, -0.6)]:
+		g._box(at + Vector3(0, 2.1, 0), Vector3(0.7, 4.2, 0.7), Color("2e323c"))
+		g._box(at + Vector3(0, 2.3, 0.42), Vector3(0.2, 0.3, 0.12), Color("1b1f26"))
+		g._box(at + Vector3(0, 2.3, 0.49), Vector3(0.14, 0.2, 0.03), GOLD, "light")
+	g._flush(precinct, "PrecinctStatic")
+	for spec in [[Vector3(-4.8, 2.0, -1.4), GOLD, 6.5], [Vector3(3.4, 2.0, 1.4), Color("5fd0dc"), 7.5], [Vector3(6.6, 2.0, -4.8), Color("ff3a4f"), 4.0]]:
+		var light := OmniLight3D.new()
+		light.position = spec[0]
+		light.light_color = spec[1]
+		light.light_energy = 1.25
+		light.omni_range = spec[2] * 1.5
+		light.shadow_enabled = false
+		precinct.add_child(light)
+	precinct.hide()
 
 func _build_exterior() -> void:
 	exterior = Node3D.new()
@@ -340,8 +455,10 @@ func populate(view: Dictionary) -> void:
 	var hallway: bool = view.get("hallway", false)
 	var outside: bool = not hallway and view.get("outdoors", place in ["crime_scene", "alley", "victim_street"])
 	var is_bar := place == "bar" and not outside and not hallway
-	geometry.visible = not outside and not hallway and not is_bar
+	var is_police := place == "police" and not outside and not hallway
+	geometry.visible = not outside and not hallway and not is_bar and not is_police
 	bar_room.visible = is_bar
+	precinct.visible = is_police
 	exterior.visible = outside
 	corridor.visible = hallway
 	blood.visible = place == str(view.get("crime_site", {}).get("place", "crime_scene")) and view.get("scene_has_blood", true)
@@ -368,12 +485,12 @@ func populate(view: Dictionary) -> void:
 	for person in view.get("staff", []):
 		var placement: String = person.get("placement", "reception")
 		var lane_index := witness_index if placement == "witness" else staff_index
-		var at := Vector3(-4.8, 0, -2.9) if placement in ["bar_staff", "restaurant_staff"] else Vector3(-1.1 + (witness_index % 3) * 2.1, 0, 3.4 + (witness_index / 3) * 1.9) if placement == "witness" and not outside else Vector3(-5.4 + (lane_index % 2) * 2.1, 0, 0.8 + (lane_index / 2) * 2.2)
+		var at := Vector3(-4.8, 0, -2.9) if placement in ["bar_staff", "restaurant_staff"] or is_police else Vector3(-1.1 + (witness_index % 3) * 2.1, 0, 3.4 + (witness_index / 3) * 1.9) if placement == "witness" and not outside else Vector3(-5.4 + (lane_index % 2) * 2.1, 0, 0.8 + (lane_index / 2) * 2.2)
 		if is_bar and placement == "witness":
 			at = _bar_client_position(view.present.size() + witness_index)
 		var verification: Dictionary = person.get("verification", {})
 		var tint := Color("83e5b3") if verification.get("total", 0) > 0 and verification.get("done", 0) == verification.total else Color("eab779") if verification.get("total", 0) > 0 else PINK
-		var offset := Vector3(0, 0, 2.0) if placement in ["bar_staff", "restaurant_staff"] else Vector3.ZERO
+		var offset := Vector3(0, 0, 2.0) if placement in ["bar_staff", "restaurant_staff"] or is_police else Vector3.ZERO
 		var actor := _actor(at, str(person.look), int(person.portrait_id), false, true, {}, "", tint, offset)
 		actor.set_meta("contact_id", person.id)
 		actor.set_meta("contact_role", person.get("role", "Personnel"))

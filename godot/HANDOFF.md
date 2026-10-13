@@ -1,5 +1,20 @@
 # Passation : client Godot
 
+## Approche réparée, première notification différée — v39 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v39.apk`, versionCode 39 / `0.39-causal`, même moteur
+`causal-3d-v10` et même signature (sauvegardes conservées). Retours de Maixent sur la v38.
+
+- **Dialogues cassés sur téléphone** : à l'étape « Approche », `rpg_dialogue._show_options(true)`
+  ne gardait que `ask`/`talk_about`/`summon`, donc « Lui parler (1 PA) » n'était jamais affiché
+  et la deuxième étape restait vide (les smokes jouaient `["talk"]` directement, sans passer par
+  les boutons). Corrigé : `talk` est un bouton, le bouton suivant s'intitule « Quitter » à
+  l'approche (`approaching`), texte « Lui parler coûte un point d'action. ». Smoke natif
+  `tests/approach_ui_smoke.gd --seed=0` passe par les vrais boutons (captures
+  `guidance-approach-*`).
+- **Toasts** : `case_toasts.FIRST_DELAY = 2,4 s` ; la première note d'une série attend que le
+  titre « TOUR n » s'efface (transition ≈ 2,5 s) avant d'apparaître ; les suivantes s'enchaînent.
+
 ## Notifications de début de tour — v38 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v38.apk`, versionCode 38 / `0.38-causal`, même moteur

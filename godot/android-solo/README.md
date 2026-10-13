@@ -1,7 +1,11 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.38-causal** : `../builds/nexus-city-solo-debug-v38.apk`, moteur `causal-3d-v10`
-(sauvegardes v37 conservées). Au début de chaque tour, de petites notifications en haut de
+Version **0.39-causal** : `../builds/nexus-city-solo-debug-v39.apk`, moteur `causal-3d-v10`
+(sauvegardes conservées). Corrige l'approche d'un suspect (le bouton « Lui parler (1 PA) »
+manquait, la liste de questions restait vide) ; la première notification d'un tour attend la
+fin du titre « TOUR n ».
+
+Version 0.38 : Au début de chaque tour, de petites notifications en haut de
 l'écran annoncent ce qui vient de devenir possible : rapport du légiste prêt, résultats du
 laboratoire, témoin de retour, employé rappelé arrivé sur place.
 

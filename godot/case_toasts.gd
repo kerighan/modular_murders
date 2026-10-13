@@ -1,6 +1,8 @@
 extends Control
 ## Concise, non-interactive floating notes, shown one after another; never a stack covering the dialogue.
+const FIRST_DELAY := 2.4  # let the turn title fade before the first note catches the eye
 var queue := []  # [heading, body] waiting their turn
+var starter: Tween
 var card: PanelContainer
 var title: Label
 var detail: Label
@@ -41,15 +43,18 @@ func _ready() -> void:
 	card.visible = false
 
 func note(heading: String, body: String = "") -> void:
-	if card.visible:
-		queue.append([heading, body])
-		return
-	_show(heading, body)
+	queue.append([heading, body])
+	if card.visible or (is_instance_valid(starter) and starter.is_running()):
+		return  # shown in its turn
+	starter = create_tween().set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
+	starter.tween_interval(FIRST_DELAY)
+	starter.tween_callback(_next)
 
 func clear() -> void:
 	queue.clear()
-	if is_instance_valid(tween):
-		tween.kill()
+	for t in [tween, starter]:
+		if is_instance_valid(t):
+			t.kill()
 	card.hide()
 
 func _next() -> void:

@@ -22,6 +22,7 @@ var current_person := {}
 var current_terminal := false
 var options := []
 var active := false
+var approaching := false  # the detective's look at a suspect: "Lui parler" / "Quitter" next
 var waiting := false
 var reading := false
 var selecting := false
@@ -186,7 +187,8 @@ func show_cue(cue: Dictionary, actions: Array) -> void:
 		context.text = str(cue.context)
 		if active and total > 0:  # the suspect's question budget stays in view
 			context.text += " · Questions %d/%d" % [used, total] + (" · %d PA" % remaining_pa if remaining_pa >= 0 else "")
-	if cue.stage == "approach":
+	approaching = cue.stage == "approach"
+	if approaching:
 		context.text = "Approche" + (" · %d PA" % remaining_pa if remaining_pa >= 0 else "")
 	elif active and remaining_pa == 0 and int(cue.get("remaining", 0)) == 0:
 		context.text += " · Relecture gratuite"
@@ -326,7 +328,7 @@ func advance() -> void:
 			thinking = false
 			_person(reply_person)
 			context.text = reply_context
-		_set_text("Quel enregistrement souhaitez-vous consulter ?" if current_terminal else "Que souhaitez-vous lui demander ?", false)
+		_set_text("Quel enregistrement souhaitez-vous consulter ?" if current_terminal else "Lui parler coûte un point d'action." if approaching else "Que souhaitez-vous lui demander ?", false)
 		_show_options(true)
 	else:
 		hide()
@@ -350,7 +352,7 @@ func _show_options(conversation: bool) -> void:
 	var folders := {}
 	for option in options:
 		var key: Array = option[0]
-		if conversation and key[0] not in ["ask", "talk_about", "summon"]:
+		if conversation and key[0] not in ["ask", "talk_about", "summon", "talk"]:
 			continue
 		if key[0] == "summon":
 			has_summons = true
@@ -454,7 +456,7 @@ func _show_options(conversation: bool) -> void:
 	for option in options:
 		if option[0][0] == "stop":
 			stop = option[0]
-	next_button.text = "Fermer les archives" if current_terminal and not stop.is_empty() else "Revenir à la ville" if remaining_pa == 0 and not stop.is_empty() and conversation else "Laisser partir" if not stop.is_empty() and conversation else "Retour"
+	next_button.text = "Fermer les archives" if current_terminal and not stop.is_empty() else "Quitter" if approaching and not stop.is_empty() else "Revenir à la ville" if remaining_pa == 0 and not stop.is_empty() and conversation else "Laisser partir" if not stop.is_empty() and conversation else "Retour"
 	next_button.set_meta("stop", stop)
 
 func _show_people_questions(kind: String = "talk_about") -> void:

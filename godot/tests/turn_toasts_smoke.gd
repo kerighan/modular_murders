@@ -24,7 +24,11 @@ func _run() -> void:
 	var shown := false
 	for i in 4:
 		await _act(["end"])
-		await create_timer(0.4).timeout
+		_check(not client.case_toasts.card.visible, "The first note waits for the turn title")
+		for j in 40:
+			await create_timer(0.1).timeout
+			if client.case_toasts.card.visible:
+				break
 		if client.case_toasts.card.visible and client.case_toasts.detail.text.begins_with("Le légiste a terminé"):
 			shown = true
 			await _capture("turn-toast")

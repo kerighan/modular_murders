@@ -1,5 +1,14 @@
 # Passation : client Godot
 
+## « Contondant », avec la glose — v45 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v45.apk`, versionCode 45 / `0.45-causal`, même moteur
+`causal-3d-v11` et même signature (sauvegardes conservées). Le rapport du légiste
+(`scenario_observations.py`, `medical_report`) dit « objet contondant (un marteau, une barre, un
+objet lourd : quelque chose qui écrase sans couper) » ; la trace de la scène
+(`scenario_crime.consequences`) « (qui écrase sans couper) ». Le mot est correct, Maixent voulait
+qu'on l'explique.
+
 ## Résumé de l'affaire, approche en un écran — v44 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v44.apk`, versionCode 44 / `0.44-causal`, même moteur

@@ -1,7 +1,9 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.44-causal** : `../builds/nexus-city-solo-debug-v44.apk`, moteur `causal-3d-v11`
-(sauvegardes conservées). L'onglet Éléments s'ouvre sur le résumé de l'affaire (victime,
+Version **0.45-causal** : `../builds/nexus-city-solo-debug-v45.apk`, moteur `causal-3d-v11`
+(sauvegardes conservées). Le légiste explique « objet contondant ».
+
+Version 0.44 : moteur `causal-3d-v11` (sauvegardes conservées). L'onglet Éléments s'ouvre sur le résumé de l'affaire (victime,
 lieu, heure du crime, signalement recueilli, preuves, suspects, pistes) ; l'approche d'un
 suspect montre sa description et « Lui parler (1 PA) » sur le même écran.
 

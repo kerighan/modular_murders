@@ -247,7 +247,7 @@ its private access list is NOT a witness statement.
     actions.append(DiscoveryAction("request_exam", Operation.EXAMINE, "Transférer le corps à la morgue pour examen",
         crime.scene, "fixture:crime_scene", ("exam_request",), ("scene_body",), death))
     medical = {Method.EDGED: "La blessure mortelle est compatible avec une lame. L'examen ne permet pas d'identifier un couteau précis.",
-               Method.BLUNT: "La blessure mortelle est compatible avec un objet contondant. L'examen ne permet pas d'identifier un objet précis.",
+               Method.BLUNT: "La blessure mortelle est compatible avec un objet contondant (un marteau, une barre, un objet lourd : quelque chose qui écrase sans couper). L'examen ne permet pas d'identifier un objet précis.",
                Method.POISONED: "Aucune blessure traumatique n'explique le décès. Les analyses indiquent une intoxication. L'examen du corps ne permet pas de savoir comment le poison a été administré."}[crime.method]
     sources = ("body", "toxic_effect") if crime.method is Method.POISONED else ("body", "method_mark")
     add("medical_report", "medical", medical, sources)

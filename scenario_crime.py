@@ -290,7 +290,7 @@ def consequences(kernel, execution):
     """Deterministic world effects, separate from discovery and interpretation."""
     v = kernel.roles.victim
     scene = execution.victim_walk.nodes[-1]
-    mark = "lésion compatible avec une arme blanche" if execution.method is Method.EDGED else "lésion compatible avec un objet contondant"
+    mark = "lésion compatible avec une arme blanche" if execution.method is Method.EDGED else "lésion compatible avec un objet contondant (qui écrase sans couper)"
     rows = [Trace("body", TraceKind.BODY, scene, execution.death_at, "death", v, "corps de la victime")]
     if execution.method is Method.POISONED:
         exposure = execution.exposure

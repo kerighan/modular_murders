@@ -1,7 +1,12 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.48-causal** : `../builds/nexus-city-solo-debug-v48.apk`, moteur `causal-3d-v12`
-(sauvegardes conservées). Sortir d'un appartement crocheté remet dans la rue comme avant ; les
+Version **0.50-causal** : `../builds/nexus-city-solo-debug-v50.apk`, moteur `causal-3d-v13`
+(sauvegardes conservées). Le coupable qui avait rendez-vous avec la victime ne l'admet plus.
+
+Version 0.49 : moteur `causal-3d-v13` (sauvegardes v48 archivées, nouvelle affaire). Le personnel ne disculpe plus que trois
+suspects au plus par affaire ; les autres ont une visite partielle ou rien.
+
+Version 0.48 : moteur `causal-3d-v12` (sauvegardes conservées). Sortir d'un appartement crocheté remet dans la rue comme avant ; les
 suspects ne disent plus que le barman les a vus.
 
 Version 0.47 : moteur `causal-3d-v12` (sauvegardes conservées). L'aiguille de la jauge tourne un peu plus vite.

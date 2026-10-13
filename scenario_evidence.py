@@ -241,6 +241,7 @@ def crime_window(crime):
     return max(0, anchor - (60 if crime.method is Method.POISONED else 30)), anchor + 30
 
 
+FULL_ALIBI_CAP = 3  # innocents the staff clears outright, per case
 RIDGES = ("boucle A", "arc B", "spirale C", "boucle D")  # partial patterns: a few people share each one
 
 
@@ -373,6 +374,16 @@ def build_evidence(crime, seed=0, appearances=None, *, required_alibis=(), parti
                         break
                 if found:
                     break
+    # At most three innocents are cleared outright by the staff: with five or six, a
+    # case was a tour of the venues (Maixent, seed 172). The others keep a true but
+    # partial visit, or nothing: they stay suspects until something else clears them.
+    full = [pr for pr in presences if pr.basis == "continuous_service"]
+    if len(full) > FULL_ALIBI_CAP:
+        for dropped in random.Random(f"alibi-cap-v1:{seed}").sample(full, len(full) - FULL_ALIBI_CAP):
+            presences.remove(dropped)
+            candidate = partial_presence(dropped.person)
+            if candidate is not None:
+                presences.append(candidate)
     if partial.random() < partial_alibis:
         candidate = partial_presence(crime.kernel.roles.author)
         if candidate is not None:

@@ -592,7 +592,7 @@ def test_service_answers_are_repeatable_free_without_duplicate_notes_or_analysis
     game.play(key)
     assert game.player.ap == 0
     assert (game.cue["text"], game.session.at, game.session.journal) == (first, at, journal)
-    disabled = ("ask", "service_action", "record:p2")
+    disabled = ("ask", "service_action", "record:" + sorted(game.case.plan.population)[1])
     assert disabled not in game.options()
     assert any(row[0] == list(disabled) and not row[2]["available"] for row in game.view(game.player)["dialogue_options"])
 

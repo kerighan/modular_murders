@@ -15,7 +15,7 @@ from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v12"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
+VERSION = "causal-3d-v13"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
 TURN_MINUTES = 30  # one turn of six actions on the case clock
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",

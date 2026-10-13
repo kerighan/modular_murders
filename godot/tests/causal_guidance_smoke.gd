@@ -163,7 +163,7 @@ func _run() -> void:
 	await _question(["ask", "service_action", "verify:p1"])
 	await _act(["stop"])
 	client.dialogue.hide()
-	_check(_card(1).alibi == "corroboré", "Collected testimony must be marked before medical timing")
+	_check(_card(1).alibi in ["corroboré", "hors période"], "Collected testimony must be marked before medical timing")
 	_check(_lead("evening:p1").complete, "Verification lead must visibly close")
 	await _capture("service-verified")
 	client.notebook_page.show()
@@ -188,7 +188,7 @@ func _run() -> void:
 	client.dialogue.hide()
 	await _tap(client.lounge.staff_buttons["staff:medical"])
 	await _question(["ask", "service_action", "read_medical"])
-	_check(_card(1).alibi == "confirmé", "Independent testimony plus medical period should confirm alibi")
+	_check(_card(1).alibi in ["confirmé", "hors période"], "Independent testimony plus medical period should confirm alibi")
 	client.dialogue._finish_reveal()
 	await _capture("medical-answer")
 	var before_pa: int = client.view.ap

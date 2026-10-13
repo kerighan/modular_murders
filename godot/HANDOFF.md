@@ -1,5 +1,55 @@
 # Passation : client Godot
 
+## Le tueur nie le rendez-vous ; mesure d'entropie des trajectoires — v50 (14 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v50.apk`, versionCode 50 / `0.50-causal`, même moteur
+`causal-3d-v13` et même signature que la v49 (sauvegardes conservées).
+
+- **Rendez-vous** (`scenario_play.context`, sujet `appointment`) : l'auteur qui avait rendez-vous
+  avec la victime (affaires `MEET_AUTHOR`) ne dit plus « On s'est retrouvés dehors pour
+  parler ». Il ment, tirage `appointment-lie-v1:seed` : « J'ai attendu, mais personne n'est
+  venu. » (les mêmes mots qu'un hôte innocent d'un vrai lapin) ou « Je n'y suis finalement pas
+  allée, j'ai eu un empêchement. » Le témoin de rue qui a vu la rencontre donne le démenti.
+  Retour de Maixent (Tess, seed 172 de l'ancien moteur). Test
+  `test_the_killer_never_admits_the_meeting_took_place`.
+- **`scenario_entropy.py`** (idée de Maixent) : le bot guidé aveugle joue chaque seed ; sa
+  trajectoire (un jeton par pas : opération ou `go`) est compressée (zlib). `ratio` = taille
+  compressée / brute ; `structure` = compressé / compressé après mélange des mêmes jetons
+  (< 1 : l'ordre lui-même se répète, boucles d'un même geste) ; entropie de Shannon des jetons.
+  Tri par `structure` croissant : les pires affaires d'abord.
+  `python scenario_entropy.py --seeds 0-59 --worst 12`. Mesure sur le bot, pas sur un humain :
+  elle repère la répétition, pas l'intérêt.
+- Smoke `causal_guidance_smoke` : accepte « hors période » pour l'alibi vérifié (plafond des
+  alibis complets).
+- Première mesure sur 60 seeds (bot guidé) : `structure` médiane 0,92, le plus varié 0,98, le
+  plus répétitif 0,77 = seed 49 (prédation, `49:retry:2`) que le bot ne résout pas en 105 pas
+  (go×34, caméra×12, lectures×8) : le bot ignore les traces de repérage (jours précédents,
+  gardienne, sonnette). À regarder : soit le bot, soit l'affaire. Les suivantes (0,83–0,89) sont
+  des affaires longues à conversations répétées, pas des boucles.
+- Texte de vérification d'une visite partielle : virgule au lieu de deux-points (règle « pas de
+  deux-points » des horaires parlés) ; tests `distinct_proof_routes[horaires]` (la famille ne
+  conclut plus seule) et `service_answers_are_repeatable` (population relative) adaptés.
+
+## Trois alibis complets au plus — v49 (14 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v49.apk`, versionCode 49 / `0.49-causal`, moteur
+`causal-3d-v13` (sauvegardes v48 archivées : les alibis changent, affaire neuve). Retour de
+Maixent sur la seed 172 : « quasi que des alibis pour disculper presque tout le monde »,
+affaire évidente dès le début.
+
+- Audit avant : sur 60 affaires, 15 avaient 6 innocents disculpés d'office par le personnel et
+  15 en avaient 5 ; la seed 172 en avait 6 sur 6. Cause : `required_alibis` (personnes à
+  accroche narrative + 2 neutres) recevaient toujours une présence continue.
+- `scenario_evidence.FULL_ALIBI_CAP = 3` : au-delà de trois `continuous_service`, les présences
+  en trop (tirage `alibi-cap-v1:seed`) deviennent une visite vraie mais partielle quand le
+  trajet le permet, sinon disparaissent. Les `continuous_noncontact` (salle d'empoisonnement)
+  ne comptent pas dans le plafond. Après : 3 alibis complets dans 46 affaires sur 60, 4 dans
+  13 (empoisonnements), 1 à 3 visites partielles dans 55.
+- Effet sur les fils : la famille « horaires » seule ne conclut plus jamais (0/60 contre ~20
+  avant) ; les affaires sont « mixte » (38) ou « signalement » (22). Le sampler rejette un peu
+  plus (médiane 1 relance, max 15), tout reste jouable.
+- Levier : remonter `FULL_ALIBI_CAP` à 4 si les affaires deviennent trop longues.
+
 ## Sortir d'un appartement crocheté, alibi sans certificat — v48 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v48.apk`, versionCode 48 / `0.48-causal`, même moteur

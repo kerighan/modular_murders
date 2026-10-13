@@ -405,9 +405,13 @@ def test_authoring_can_offer_distinct_proof_routes(profile):
     from scenario_threads import family_lengths
     case = sample_playable(7, profile=profile)
     lengths = family_lengths(case)
-    assert thread_profile(lengths) == profile
-    if profile != "mixte":
-        assert lengths[profile] is not None
+    if profile == "horaires":
+        # Since the cap on full alibis, a tour of the venues never closes a case on its own.
+        assert lengths["horaires"] is None and thread_profile(lengths) in ("mixte", "signalement")
+    else:
+        assert thread_profile(lengths) == profile
+        if profile != "mixte":
+            assert lengths[profile] is not None
     assert case.plan.graph().remaining(a.id for a in case.plan.artifacts) == {case.crime.kernel.roles.author}
     assert play(PlaySession(case))["won"]
 
@@ -553,3 +557,25 @@ def test_without_a_stalker_the_previous_days_and_the_caretaker_say_nothing():
     assert all(a.candidates == case.plan.population for a in case.plan.artifacts if a.id.startswith(("camera_past:", "prowler:")))
     assert not [c for c in case.evidence.contacts if c.id.endswith(":stalking")]
     assert not any(c.get("prowler") for c in case.claims.values())
+
+
+def test_the_killer_never_admits_the_meeting_took_place():
+    from scenario_victim import VictimGoal
+    for seed in range(40):
+        case = build_case(seed)
+        plan = case.crime.victim_plan
+        if plan.goal is not VictimGoal.MEET_AUTHOR:
+            continue
+        author = case.crime.kernel.roles.author
+        s = PlaySession(case, ("search", "rapport"), strict=False, difficulty="libre")
+        s.state = s.state.learn("victim_diary", 0) if hasattr(s.state, "learn") else s.state
+        s.do("inspect_scene")
+        s.go(case.life.people[case.crime.kernel.roles.victim].home)
+        s.do("read_diary")
+        s.go(s.person_place(author))
+        s.do("meet:" + author)
+        answer = s.ask_context(author, "appointment")
+        assert "avions rendez-vous" in answer and "On s'est retrouvés" not in answer
+        assert "personne n'est venu" in answer or "pas allée" in answer
+        return
+    raise AssertionError("no agreed-meeting case among the first seeds")

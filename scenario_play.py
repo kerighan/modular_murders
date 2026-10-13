@@ -310,7 +310,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                 raise ValueError("A partial visit still has remembered landmarks")
             beginning, ending = spoken_time(times['start']), spoken_time(times['end'])
             text = (f"Oui, {name}, hier. Entre {beginning} et {ending}, cette personne était à sa table. "
-                    f"{'Avant' if p.start > start else 'Après'}, je ne peux rien dire : je ne l'ai pas vue.")
+                    f"{'Avant' if p.start > start else 'Après'}, je ne peux rien dire, je ne l'ai pas vue.")
             # True, verified, and silent on part of the crime window: it clears nobody.
             add("alibi:" + p.person, "corroboration", text, p.id,
                 claim={"account": p.person, "partial": True, "place": p.place, **times, "source_actor": p.witness})
@@ -1139,7 +1139,13 @@ class PlaySession:
             victim = self.case.life.people[self.case.crime.kernel.roles.victim].name
             if person == appointment.host:
                 text = f"Oui, {victim} et moi avions rendez-vous vers {clock(appointment.starts_at)}."
-                text += " J'ai attendu, mais personne n'est venu." if any(m.observer == person for m in self.case.crime.missed_appointments) else " On s'est retrouvés dehors pour parler."
+                if person == self.case.crime.kernel.roles.author:
+                    # The killer never admits the meeting took place: the same words an innocent
+                    # host uses for a real no-show, or an excuse. A street witness can give the lie.
+                    text += random.Random(f"appointment-lie-v1:{self.case.seed}").choice(
+                        (" J'ai attendu, mais personne n'est venu.", " Je n'y suis finalement pas allée, j'ai eu un empêchement."))
+                else:
+                    text += " J'ai attendu, mais personne n'est venu." if any(m.observer == person for m in self.case.crime.missed_appointments) else " On s'est retrouvés dehors pour parler."
             else:
                 text = "Ce rendez-vous ne me dit rien. Nous n'en avions pas parlé."
         else:

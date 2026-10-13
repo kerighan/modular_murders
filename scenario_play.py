@@ -90,6 +90,23 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         rows += [(b.outbound.nodes[-1], b.outbound.times[-1], b.inbound.times[0]) for b in crime.mundane_borrowings if b.actor == pid]
         return rows
 
+    def sighting_text(rows, rng):
+        doing = {"bar": ("un verre à la main", "devant un verre"), "restaurant": ("à table", "devant une assiette")}
+        def one(row):
+            name, when = people[row["person"]].name, spoken_time(row["minute"])
+            where, what = at_place_label(labels[row["place"]]), rng.choice(doing.get(row["place"], ("de passage",)))
+            of = ("d'" if name[0] in "AEIOUÉÈÊÎÔÛH" else "de ") + name
+            return rng.choice((f"{name} était {where} vers {when}, {what}. On s'est salués, pas plus.",
+                               f"Je me souviens {of}, {what} {where}, vers {when}.",
+                               f"J'ai croisé {name} {where} vers {when}, {what}. On n'a pas vraiment parlé."))
+        if len(rows) == 2 and rows[0]["place"] == rows[1]["place"]:
+            a, b = (people[r["person"]].name for r in rows)
+            when, where = spoken_time(min(r["minute"] for r in rows)), at_place_label(labels[rows[0]["place"]])
+            what = rng.choice(doing.get(rows[0]["place"], ("de passage",)))
+            return rng.choice((f"{a} et {b} étaient {where} vers {when}, {what}. Je ne les ai pas abordés.",
+                               f"Il y avait {a} {where}, vers {when}. {b} aussi, un peu plus loin."))
+        return " ".join(one(r) for r in rows)
+
     def shared_sightings(pid):
         seen = []
         for place, start, end in stays(pid):
@@ -137,14 +154,16 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         observation_text = "Je n'ai rien à vous raconter sur ce qui lui est arrivé."
         if borrowing:
             keeper = next(k for k in crime.keepers if k.id == borrowing.permission_by)
-            observation_text = f"Dans la journée, j'avais emprunté un objet à {dict(plan.locations)[keeper.place]}. {keeper.name} était là."
+            observation_text = f"Dans la journée, j'avais emprunté un objet {at_place_label(labels[keeper.place])}. {keeper.name} était là."
         # Who this person really saw: other guests of the same venue at the same time.
         # True for everyone, the author included; a glimpse names people and places,
         # it never clears anyone on its own.
         sightings = [{"person": other, "place": place, "minute": minute} for other, place, minute in shared_sightings(p.id)]
         if sightings:
-            seen = "; ".join(f"{at_place_label(labels[row['place']])}, j'ai aperçu {people[row['person']].name} vers {spoken_time(row['minute'])}" for row in sightings)
-            observation_text = (observation_text + "\n" if borrowing else "") + seen[0].upper() + seen[1:] + "."
+            # A memory, not a roster: one face, sometimes two, with what they were doing.
+            memory = random.Random(f"sightings-v2:{seed}:{p.id}")
+            sightings = memory.sample(sightings, min(len(sightings), memory.choice((1, 1, 2))))
+            observation_text = (observation_text + "\n" if borrowing else "") + sighting_text(sightings, memory)
         observation_reveals = old.reveals if old else ()
         if borrowing or sightings or not observation_reveals:
             add(observation_key, "personal_account", observation_text, observation_key,

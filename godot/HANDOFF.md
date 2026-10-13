@@ -1,5 +1,24 @@
 # Passation : client Godot
 
+## Un souvenir, pas un inventaire — v40 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v40.apk`, versionCode 40 / `0.40-causal`, même moteur
+`causal-3d-v10` et même signature (sauvegardes conservées ; le texte des réponses « Témoin »
+change à la relecture). Retour de Maixent sur la seed 682 : « Au Néon Bleu, j'ai aperçu Nadia
+vers 18 h et demie ; au Néon Bleu, j'ai aperçu Chloé… » faisait inventaire, trop de noms, trop froid.
+
+- `scenario_play.py` : `shared_sightings` liste toujours tous les vrais recoupements, mais la
+  réponse n'en garde qu'un (2/3) ou deux (1/3), tirés par `random.Random("sightings-v2:…")` ;
+  `sighting_text` les raconte avec ce que la personne faisait (bar : « un verre à la main »,
+  « devant un verre » ; Comptoir : « à table », « devant une assiette ») sur trois tournures
+  (« Lina était au Comptoir vers 18 h moins le quart, à table. On s'est salués, pas plus. »,
+  « Je me souviens d'Oscar, à table au Comptoir, vers 20 h. », « J'ai croisé Salomé … On n'a
+  pas vraiment parlé. ») et deux pour un duo au même endroit. La claim `sightings` ne contient
+  que ce qui est dit. Élision « d'Oscar » ; « emprunté un objet au Néon Bleu » (contraction).
+- Audit 120 seeds : 636/815 réponses « Témoin » informatives (une seule personne dans 329 cas,
+  deux dans 92) ; le coupable parle d'un aperçu moins souvent (40 contre ~98 attendus) parce
+  qu'il est moins souvent client du lieu, inchangé par rapport à la v34.
+
 ## Approche réparée, première notification différée — v39 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v39.apk`, versionCode 39 / `0.39-causal`, même moteur

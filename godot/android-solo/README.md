@@ -1,7 +1,10 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.39-causal** : `../builds/nexus-city-solo-debug-v39.apk`, moteur `causal-3d-v10`
-(sauvegardes conservées). Corrige l'approche d'un suspect (le bouton « Lui parler (1 PA) »
+Version **0.40-causal** : `../builds/nexus-city-solo-debug-v40.apk`, moteur `causal-3d-v10`
+(sauvegardes conservées). La question « Témoin » raconte un souvenir, une ou deux personnes
+avec ce qu'elles faisaient, au lieu d'une liste de noms.
+
+Version 0.39 : Corrige l'approche d'un suspect (le bouton « Lui parler (1 PA) »
 manquait, la liste de questions restait vide) ; la première notification d'un tour attend la
 fin du titre « TOUR n ».
 

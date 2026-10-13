@@ -607,6 +607,7 @@ class CausalGame:
             text = s.go(key[1])
             s.doorstep = None
         elif action == "end":
+            waiting = self.pending_actions()
             self.tick += 1
             p.ap = 6
             s.end_turn()  # the clock only moves here; a case past its deadline closes now
@@ -615,10 +616,10 @@ class CausalGame:
             if s.place in self.homes and self.occupants(s.place):
                 s.go(self.homes[s.place])
                 text = "Vous regagnez le couloir avant le retour des habitants."
-            called = [self.case.life.people[pid].name + " répond à l'appel du travail et passe le tour " + at_label(s.locations[self.case.life.people[pid].workplace.value])
-                      for pid in sorted(self.summons) if self.summons[pid] == self.tick]
-            if called:
-                text = (text + "\n" if text else "") + "📰 " + " · ".join(called) + " : domicile vide ce tour-ci."
+            events = [self.event_text(a) for a in waiting if a.id not in {b.id for b in self.pending_actions()}]
+            events += [self.case.life.people[pid].name + " a rejoint " + s.locations[self.case.life.people[pid].workplace.value] + " : son domicile est vide ce tour-ci."
+                       for pid in sorted(self.summons) if self.summons[pid] == self.tick]
+            text = "\n".join(([text] if text else []) + ["📰 " + e for e in events])
         elif action == "stop":
             self.speaker, self.camera_block, self.camera_place = None, None, None
             self.slots, self.approaching = 0, False  # the conversation is over; next time costs a point again
@@ -780,7 +781,29 @@ class CausalGame:
         if self._dial_score is not None and action != "unlock_home":
             key = key + (self._dial_score,)  # the dial's verdict travels with the move
         self.history.append(list(key))
-        return [] if self.cue else ([text] if text else [])
+        return [] if self.cue else text.split("\n") if text else []
+
+    def pending_actions(self):
+        """Actions whose requirements are met but whose time has not come: a report being
+        written, an analysis running, a witness or a keeper off shift."""
+        s, known = self.session, dict(self.session.state.known)
+        plan = s.effective_plan
+        return [a for a in plan.actions if a.operation is not Operation.CAMERA and a.id not in s.state.completed
+                and set(a.requires) <= known.keys()
+                and (ready := plan.next_time(a, s.state, after=s.at)) is not None and ready > s.at]
+
+    def event_text(self, a):
+        """The turn-start headline for an action that just became possible."""
+        place = at_label(self.session.locations[a.place])
+        if a.id == "read_medical":
+            return "Le légiste a terminé : son rapport vous attend " + place + "."
+        if a.id.startswith("analyze_"):
+            return "Les résultats du laboratoire sont disponibles."
+        if a.actor.startswith("witness:"):
+            return a.label.split(" ", 1)[1].capitalize() + " est de retour " + place + "."
+        if a.actor.startswith("staff:"):
+            return self.source_person(a.actor, a.operation)["name"] + " reprend son service " + place + "."
+        return a.label + " : possible " + place + "."
 
     def fixture_catalogue(self, place):
         """Physical furniture is independent of remaining discovery actions.

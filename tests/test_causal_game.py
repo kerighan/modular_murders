@@ -1270,6 +1270,18 @@ def test_a_suspect_is_described_first_and_talking_is_the_paid_step():
     assert game.options() == {("stop",): "Quitter"}  # no point left: a look, no talk, no reread
 
 
+def test_turn_start_headlines_announce_what_became_possible():
+    game = fresh(0, ("search", "rapport"))
+    game.play(("investigate", "inspect_scene"))
+    game.play(("investigate", "request_exam"))
+    assert [a.id for a in game.pending_actions()] == ["read_medical"]
+    lines = []
+    while not lines and game.tick < 6:
+        lines = game.play(("end",))
+    assert lines == ["📰 Le légiste a terminé : son rapport vous attend à la Morgue."] and game.tick == 2
+    assert not game.pending_actions() and game.play(("end",)) == []  # announced once
+
+
 def test_an_employer_calls_a_suspect_in_once_you_know_where_they_work():
     game = fresh(0, ("search", "rapport"))
     pid = next(p for p in sorted(game.case.plan.population) if game.case.life.people[p].workplace.value in ("bar", "restaurant"))

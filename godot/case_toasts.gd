@@ -1,5 +1,6 @@
 extends Control
-## One concise, non-interactive floating note; no stack covering the dialogue.
+## Concise, non-interactive floating notes, shown one after another; never a stack covering the dialogue.
+var queue := []  # [heading, body] waiting their turn
 var card: PanelContainer
 var title: Label
 var detail: Label
@@ -40,6 +41,24 @@ func _ready() -> void:
 	card.visible = false
 
 func note(heading: String, body: String = "") -> void:
+	if card.visible:
+		queue.append([heading, body])
+		return
+	_show(heading, body)
+
+func clear() -> void:
+	queue.clear()
+	if is_instance_valid(tween):
+		tween.kill()
+	card.hide()
+
+func _next() -> void:
+	card.hide()
+	if not queue.is_empty():
+		var row: Array = queue.pop_front()
+		_show(row[0], row[1])
+
+func _show(heading: String, body: String) -> void:
 	if is_instance_valid(tween):
 		tween.kill()
 	title.text = heading
@@ -48,17 +67,13 @@ func note(heading: String, body: String = "") -> void:
 	card.visible = true
 	card.modulate.a = 0
 	card.offset_top = 32
-	tween = create_tween()
-	tween.set_parallel(true)
+	# Physics steps: a frame stalled by the engine's Python call cannot swallow the whole note.
+	# Parallel by default; chain() opens each new step (set_parallel() after chain() would
+	# merge the fade-out into the hold, and the note vanished after 0.7 s).
+	tween = create_tween().set_process_mode(Tween.TWEEN_PROCESS_PHYSICS).set_parallel(true)
 	tween.tween_property(card, "modulate:a", 1.0, 0.2)
 	tween.tween_property(card, "offset_top", 22.0, 0.25)
-	tween.chain().tween_interval(3.3)
-	tween.chain().set_parallel(true)
-	tween.tween_property(card, "modulate:a", 0.0, 0.45)
+	tween.chain().tween_interval(2.6 if not queue.is_empty() else 3.3)
+	tween.chain().tween_property(card, "modulate:a", 0.0, 0.45)
 	tween.tween_property(card, "offset_top", 10.0, 0.45)
-	tween.chain().tween_callback(card.hide)
-
-func clear() -> void:
-	if is_instance_valid(tween):
-		tween.kill()
-	card.hide()
+	tween.chain().tween_callback(_next)

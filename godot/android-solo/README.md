@@ -1,7 +1,11 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.37-causal** : `../builds/nexus-city-solo-debug-v37.apk`, moteur `causal-3d-v10`
-(les sauvegardes v36 sont archivées, nouvelle affaire). Au Néon Bleu et au Comptoir, « Faire
+Version **0.38-causal** : `../builds/nexus-city-solo-debug-v38.apk`, moteur `causal-3d-v10`
+(sauvegardes v37 conservées). Au début de chaque tour, de petites notifications en haut de
+l'écran annoncent ce qui vient de devenir possible : rapport du légiste prêt, résultats du
+laboratoire, témoin de retour, employé rappelé arrivé sur place.
+
+Version 0.37 : moteur `causal-3d-v10` (les sauvegardes v36 sont archivées, nouvelle affaire). Au Néon Bleu et au Comptoir, « Faire
 appeler un employé… » : le patron rappelle un suspect dont vous avez établi qu'il travaille là
 (sa réponse « Métier », sa fiche police ou « Qui travaille ici ? ») ; au tour suivant il est sur
 place et son domicile est vide (1 PA).

@@ -1,5 +1,28 @@
 # Passation : client Godot
 
+## Notifications de début de tour — v38 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v38.apk`, versionCode 38 / `0.38-causal`, même moteur
+`causal-3d-v10` et même signature que la v37 (sauvegardes conservées).
+
+- **Moteur** (`causal_game.py`) : `pending_actions()` liste les actions dont les prérequis sont
+  acquis mais dont l'heure n'est pas venue (rapport du légiste en cours, analyse au labo, témoin
+  ou patron hors service) ; `play(("end",))` compare avant/après et renvoie une ligne `📰 …` par
+  action devenue possible (`event_text`) : « Le légiste a terminé : son rapport vous attend à la
+  Morgue. », « Les résultats du laboratoire sont disponibles. », « La vendeuse de nuit est de
+  retour à … », « Le barman reprend son service … », plus « Lina a rejoint Le Néon Bleu : son
+  domicile est vide ce tour-ci. » pour un employé rappelé. `play` renvoie désormais une liste
+  d'événements (une par ligne), pas une seule chaîne.
+- **Client** : `case_toasts.gd` met les notes en file (`queue`) et les affiche l'une après
+  l'autre en haut à droite (2,6 s quand d'autres attendent, 3,3 s sinon) au lieu d'écraser la
+  précédente ; `main.gd` affiche chaque ligne `📰` sous le titre « Tour n ».
+- **Bug ancien corrigé** (`case_toasts.gd`) : `set_parallel(true)` appelé après `chain()`
+  fusionnait le fondu de sortie avec la pause, toute note disparaissait en 0,7 s (d'où des
+  toasts jamais vus sur téléphone). Le tween tourne sur les pas physiques pour qu'une image
+  bloquée par l'appel Python n'avale pas la note.
+- Tests : `test_turn_start_headlines_announce_what_became_possible` ; smoke natif
+  `tests/turn_toasts_smoke.gd --seed=0` (capture `guidance-turn-toast-*`).
+
 ## Faire appeler un employé — v37 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v37.apk`, versionCode 37 / `0.37-causal`, moteur

@@ -531,7 +531,9 @@ func _present_feedback(previous: Dictionary) -> void:
 	elif not pending_events.is_empty():
 		if action_context in ["move", "walk", "end", "", "equip"]:
 			for line in pending_events:
-				if str(line).begins_with("🔔") or str(line).begins_with("📰") or "porte résiste" in str(line):
+				if str(line).begins_with("📰"):
+					case_toasts.note("Tour %d" % (int(view["tick"]) + 1), str(line).trim_prefix("📰 "))
+				elif str(line).begins_with("🔔") or "porte résiste" in str(line):
 					case_toasts.note("Information", str(line))
 		else:
 			dialogue.show_result(pending_events, view["player"])

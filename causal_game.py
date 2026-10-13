@@ -43,6 +43,9 @@ def at_label(label):
 
 
 LOCKPICK_DIFFICULTY = 0.55  # the dial's arc width and needle speed, 0 easy .. 1 hard
+QUESTIONS_PER_PA = 3  # one action point opens a conversation and buys this many fresh questions
+PERSUASION_DIFFICULTY = 0.5  # past the batch, a good hand talks one more answer out of a suspect
+FINGERPRINT_DIFFICULTY = 0.6  # lifting a print without the kit's training
 PASS_MARK = 0.5  # inside the arc
 
 
@@ -74,6 +77,7 @@ class CausalGame:
         self.equipped = False
         self.note_turns = []
         self.questions_paid = set()
+        self.slots = 0  # fresh questions left in the open conversation
         self.unlocked_homes = set()
         self.routines = next_day_routines(self.case)
         self.homes = {n.id: next(iter(self.case.witnesses.streets.neighbors(n.id)))[0]
@@ -119,12 +123,47 @@ class CausalGame:
         return not self.occupants(home) and (home in self.unlocked_homes or home == self.case.life.people[self.case.crime.kernel.roles.victim].home)
 
     def open_questions(self, pid):
+        # Talking to someone costs one action point and buys a few questions; with no
+        # point left, the conversation opens for rereads only.
         self.speaker = pid
         if "profile:" + pid not in dict(self.session.state.known):
             self.session.do("meet:" + pid)
+        if self.player.ap > 0:
             self.player.ap -= 1
+            self.slots = QUESTIONS_PER_PA
+        else:
+            self.slots = 0
         self._cue("", person=self.person(pid), active=True)
         self.cue["stage"] = "greeting"
+
+    def spend_question(self):
+        """A fresh question takes a slot. Past the budget, a good hand (the dial) talks one
+        more answer out; with the rapport skill that answer is simply granted; otherwise a
+        point buys the next batch. Returns False when nothing can buy the question."""
+        if self.slots <= 0:
+            if "rapport" in self.session.skills:
+                self.slots = 1
+            else:
+                score = self._replayed_score if self._replayed_score is not None else float(self.challenge("persuasion", PERSUASION_DIFFICULTY))
+                self._dial_score = round(score, 3)
+                if score >= PASS_MARK:
+                    self.slots = 1
+                elif self.player.ap > 0:
+                    self.player.ap -= 1
+                    self.slots = QUESTIONS_PER_PA
+                else:
+                    return False
+        self.slots -= 1
+        return True
+
+    def network_view(self):
+        """The ego graph with the client's integer ids."""
+        graph = self.session.social_graph()
+        number = lambda pid: int(pid[1:])
+        return {"center": number(graph["center"]),
+                "nodes": [{**n, "id": number(n["id"])} for n in graph["nodes"]],
+                "edges": [{**e, "a": number(e["a"]), "b": number(e["b"])} for e in graph["edges"]],
+                "strangers": [[number(a), number(b)] for a, b in graph["strangers"]]}
 
     def ending_view(self):
         """The closing card. Private truth is only consulted once the case is over."""
@@ -307,7 +346,7 @@ class CausalGame:
                     "question": question, "notes": [], "active": active, "remaining_pa": self.player.ap,
                     "context": "Images · " + self.session.locations[self.camera_place] + " · hier" if self.speaker == "camera" and self.camera_place else "Régie vidéo · hier" if self.speaker == "camera" else "Conversation" if active else "Observation consignée",
                     "terminal": self.speaker == "camera",
-                    "remaining": 3 if active else 0,
+                    "remaining": self.slots if active else 0, "slots_total": QUESTIONS_PER_PA,
                     "person": person or {"id": -1, "name": name, "look": "", "detective": True}}
         if person and person.get("role"):
             self.cue["context"] = person["role"] + " · Source d'information"
@@ -316,7 +355,7 @@ class CausalGame:
         """First acquisition costs one PA; a heard answer is free to repeat."""
         s = self.session
         if key[0] == "talk_about":
-            return int(not self._legacy_question_replay and not any(
+            return int(not self._legacy_question_replay and self.slots <= 0 and not any(
                 r["id"] == "about:" + self.speaker + ":p" + str(key[2]) for r in s.journal))
         if key[0] != "ask" or key[1] == "service_status":
             return 0
@@ -334,7 +373,7 @@ class CausalGame:
                  or action is not None and action + self.speaker in s.state.completed
                  or any(r["id"] == "context:" + self.speaker + ":" + topic for r in s.journal))
         legacy_free = self._legacy_question_replay and topic not in ("messages", "evening", "motive", "observations")
-        return int(not heard and not legacy_free)
+        return int(not heard and not legacy_free and self.slots <= 0)  # within the batch a fresh question is free
 
     def options(self, include_unavailable=False):
         s, p = self.session, self.player
@@ -358,6 +397,8 @@ class CausalGame:
                                 "analyze_blood": "Que donne le prélèvement sanguin ?"}.get(row["id"], question)
                     if row["id"].startswith("venue_guests:"):
                         question = "Qui est venu hier soir ?"
+                    if row["id"].startswith("venue_staff:"):
+                        question = "Qui travaille ici ?"
                     if row["id"].startswith("verify:"):
                         question = "Vérifier le récit de " + self.case.life.people[row["id"].split(":", 1)[1]].name
                     if row["id"].startswith("record:"):
@@ -456,8 +497,8 @@ class CausalGame:
             result[("camera_menu",)] = "Consulter les archives vidéo"
         for obj in sorted(s.found):
             if obj in s.carried or s.object_places[obj] == s.place:
-                if "fingerprints" in s.skills and obj not in s.prints:
-                    result[("fingerprint", obj)] = "Relever : " + s.object_label(obj) + " (1 PA)"
+                if obj not in s.prints:  # anyone may try; without the training the dial decides
+                    result[("fingerprint", obj)] = "Relever : " + s.object_label(obj) + " (1 PA" + (")" if "fingerprints" in s.skills else " · adresse)")
             if s.place == "lab" and obj in s.carried and not any(r["id"] == "surface:" + obj for r in s.journal):
                 surface = next((r for r in self.case.evidence.surfaces if r.object == obj), None)
                 required = "blood_reference" if surface and surface.kind == "victim_blood" else "drink_result" if surface else None
@@ -474,9 +515,11 @@ class CausalGame:
     def play(self, key):
         key = tuple(key)
         replayed_score = None
-        if key[:1] == ("unlock_home",) and len(key) == 3:  # a saved attempt carries its dial score
-            replayed_score = float(key[2])
-            key = key[:2]
+        if key[0] in ("unlock_home", "ask", "talk_about", "fingerprint") and len(key) >= 3 and type(key[-1]) is float:
+            replayed_score = key[-1]  # a saved attempt carries its dial score
+            key = key[:-1]
+        self._replayed_score = replayed_score
+        self._dial_score = None
         if self.session.finished and key == ("stop",):
             # Closing a conversation after the case is closed is always allowed: no dead end.
             self.speaker, self.camera_block, self.camera_place = None, None, None
@@ -506,6 +549,7 @@ class CausalGame:
                 text = "Vous regagnez le couloir avant le retour des habitants."
         elif action == "stop":
             self.speaker, self.camera_block, self.camera_place = None, None, None
+            self.slots = 0  # the conversation is over; next time costs a point again
             s.doorstep = None
         elif action == "ring":
             people = self.occupants(key[1])
@@ -579,12 +623,11 @@ class CausalGame:
                     action_row = next((a for a in self.case.plan.actions if a.id == action_id), None)
                     context_id = "context:" + self.speaker + ":" + topic
                     already = action_id in s.state.completed or any(r["id"] == context_id for r in s.journal)
-                    paid = (self.speaker, topic) in self.questions_paid or already
-                    if not paid and not p.ap:
+                    paid = (self.speaker, topic) in self.questions_paid or already or self._legacy_question_replay
+                    if not paid and not self.spend_question():
                         self._cue("Plus de PA pour poursuivre l'interrogatoire. Vous pouvez fermer la conversation et reprendre au prochain tour.", name=p.name, active=True)
                     else:
                         if not paid:
-                            p.ap -= 1
                             self.questions_paid.add((self.speaker, topic))
                         if action_row and not already and action_id not in {a["id"] for a in s.options()}:
                             self._cue("Cette déposition sera accessible après le constat sur la scène. Cette question ne vous coûtera pas de nouveau PA.", name=p.name, active=True)
@@ -598,16 +641,21 @@ class CausalGame:
                             text = s.ask_context(self.speaker, topic)
                             self._cue(text, person=self.person(self.speaker), active=True, question=options[key])
                 else:
-                    cost = self.question_cost(key)
-                    text = s.ask_context(self.speaker, topic)
-                    p.ap -= cost
-                    self.questions_paid.add((self.speaker, topic))
-                    self._cue(text, person=self.person(self.speaker), active=True, question=options[key])
+                    fresh = (self.speaker, topic) not in self.questions_paid and not any(
+                        r["id"] == "context:" + self.speaker + ":" + topic for r in s.journal) and not self._legacy_question_replay
+                    if fresh and not self.spend_question():
+                        self._cue("Plus de PA pour poursuivre l'interrogatoire. Vous pouvez fermer la conversation et reprendre au prochain tour.", name=p.name, active=True)
+                    else:
+                        text = s.ask_context(self.speaker, topic)
+                        self.questions_paid.add((self.speaker, topic))
+                        self._cue(text, person=self.person(self.speaker), active=True, question=options[key])
         elif action == "talk_about":
-            cost = self.question_cost(key)
-            text = s.talk_about(self.speaker, "p" + str(key[2]))
-            p.ap -= cost
-            self._cue(text, person=self.person(self.speaker), active=True, question="Et " + self.case.life.people["p" + str(key[2])].name + " ?")
+            fresh = not self._legacy_question_replay and not any(r["id"] == "about:" + self.speaker + ":p" + str(key[2]) for r in s.journal)
+            if fresh and not self.spend_question():
+                self._cue("Plus de PA pour poursuivre l'interrogatoire. Vous pouvez fermer la conversation et reprendre au prochain tour.", name=p.name, active=True)
+            else:
+                text = s.talk_about(self.speaker, "p" + str(key[2]))
+                self._cue(text, person=self.person(self.speaker), active=True, question="Et " + self.case.life.people["p" + str(key[2])].name + " ?")
         elif action == "camera_menu":
             self.speaker = "camera"
             self.camera_place = s.place if self._legacy_camera_replay else None
@@ -630,7 +678,14 @@ class CausalGame:
             if action == "investigate":
                 text = s.do(key[1])
             elif action == "fingerprint":
-                text = s.fingerprint(key[1])
+                score = None
+                if "fingerprints" not in s.skills:
+                    score = self._replayed_score if self._replayed_score is not None else float(self.challenge("fingerprint", FINGERPRINT_DIFFICULTY))
+                    self._dial_score = round(score, 3)
+                if score is None or score >= PASS_MARK:
+                    text = s.fingerprint(key[1], trained=True)  # the kit's training, or a steady hand
+                else:
+                    text = "Le relevé est brouillé : la poudre a bavé. Il faudra recommencer."
             elif action == "analyze_object":
                 text = s.analyze_object(key[1])
             p.ap -= 1
@@ -641,6 +696,8 @@ class CausalGame:
                 self._cue(text)
         self.note_turns.extend([self.tick + 1] * (len(s.journal) - before))
         p.place = s.place
+        if self._dial_score is not None and action != "unlock_home":
+            key = key + (self._dial_score,)  # the dial's verdict travels with the move
         self.history.append(list(key))
         return [] if self.cue else ([text] if text else [])
 
@@ -688,7 +745,7 @@ class CausalGame:
         if place == "police":
             fixtures["police"] = {"id": "police", "name": "Déposer un dossier",
                                    "prop": "desk", "object": True, "actions": []}
-        if place == "lab" or "fingerprints" in self.session.skills:
+        if True:  # the lab's bench, or the kit anyone may try: furniture never pops up after a search
             # A carried kit exists from equipment selection, not only when a
             # first print is available. It is never a desk popping up in a street.
             fixtures["objects"] = {"id": "objects", "name": "Poste d'analyse" if place == "lab" else "Kit de relevé d'empreintes",
@@ -935,6 +992,7 @@ class CausalGame:
                                "reason": "too_far" if self.cost(q) > player.ap else "", "key": ["move" if q in self.parents else "walk", q]} for q in places},
                 "pending": ("terminal vidéo" if self.speaker == "camera" else self.case.life.people[self.speaker].name if self.speaker in self.case.plan.population else self.source_person(self.speaker, Operation.INTERVIEW)["name"]) if self.speaker else None,
                 "conversation": self.cue, "notebook": notebook, "contacts": self.notebook_contacts(labels), "journal": journal, "leads": leads,
+                "network": self.network_view(),
                 "story": {"window": next((r["text"] for r in s.journal if r["id"] == "medical_window"), None), "object": "objets examinés : " + str(len(s.found)) if s.found else None,
                           "object_status": "found" if s.carried else "not_reported"},
                 "facts": facts, "trusted": [], "progress": progress,

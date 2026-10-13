@@ -1,5 +1,55 @@
 # Passation : client Godot
 
+## Budget de questions, témoins utiles, fausses pistes d'emprunt — v34 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v34.apk`, versionCode 34 / `0.34-causal`, même signature.
+
+- **Budget de questions (suspects seulement)** : `open_questions` (sonner / interroger) coûte 1 PA
+  et donne `QUESTIONS_PER_PA` = 3 questions neuves (`self.slots`) ; à 0 PA la conversation
+  s'ouvre en relecture seule. `spend_question()` : une question neuve consomme un slot ; à
+  épuisement, `rapport` offre une question, sinon jauge « persuasion » (0,5) : réussie → une
+  question offerte, ratée → 1 PA pour trois de plus. `question_cost` renvoie 0 tant qu'il reste
+  un slot. `stop` remet `slots` à 0. Cue : `remaining` (slots restants), `slots_total` ;
+  `rpg_dialogue.gd` affiche « Questions 1/3 · 4 PA ». Les PNJ (personnel, légiste, labo,
+  commissariat, témoins) gardent exactement leurs coûts.
+- **Jauge pour les empreintes** : `("fingerprint", obj)` offert à tous (« · adresse » sans la
+  compétence), jauge « fingerprint » (0,6), raté → « Le relevé est brouillé », réessai possible.
+  Les scores des jauges (persuasion, empreintes) sont sauvés en fin de clé d'historique
+  (`["ask", "motive", 0.82]`, `["fingerprint", obj, 0.31]`) et rejoués sans jauge.
+- **Question « Témoin »** : `observations:X` dit qui X a réellement aperçu, où et quand
+  (`shared_sightings`, intervalles partagés entre présences vérifiées, visites réelles et
+  emprunts ; claim `sightings`), coupable compris et sincère. Mesure : 307 réponses
+  informatives sur 412 contre 16 avant. Un aperçu nomme et oriente, il n'écarte pas.
+- **Emprunts** : le serveur nomme l'emprunteur (« On en a prêté un à Tess ») ; l'objet d'un
+  établissement trouvé dans un logement est étiqueté « (du Néon Bleu) », emporté (`carried`)
+  et analysable au labo (« Aucune trace exploitable ») ; l'emprunteur travaille sur place
+  sept fois sur dix quand c'est possible (`workplace-loan-v1`). Fausse piste honnête.
+
+## Onglet Réseau, équipe des établissements — v33 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v33.apk`, versionCode 33 / `0.33-causal`, même signature.
+
+- **Graphe social public** : `PlaySession.social_graph()` → `{center, nodes[{id, name, victim,
+  excluded}], edges[{a, b, kinds, sources}], strangers[[a, b]]}`, construit uniquement depuis
+  le journal : `context:X:relation` (liens X–victime), `context:X:work` (collègues),
+  `context:X:circle` (« proche » de la victime), `about:X:Y` (liens X–Y, ou paire
+  `strangers` si « je ne connais pas »), faits `ex_and_partner` / `sour_breakup`
+  (« rivalité » / « ex en paix ») et albums lus (claim `photos` ajouté aux artefacts
+  `photos:homeX`). `excluded` = plus dans `remaining()`. Vue : `view["network"]` avec ids
+  entiers (`network_view`).
+- Client : onglet **Réseau** (`ego_graph.gd`, Control dessiné) : victime au centre, les autres
+  sur un cercle (jamais deux en opposition), arêtes colorées par type et étiquetées, paires
+  « ne se connaissent pas » en pointillés, personnes écartées à 35 % d'opacité
+  (« · écarté ») ; toucher un nœud ouvre la fiche (`person_tapped` → `_select_notebook_suspect`).
+  Test natif `tests/network_smoke.gd`, capture `causal-network-*`.
+- **« Qui travaille ici ? »** : action `venue_staff:<lieu>` chez chaque tenancier (artefact
+  `venue_staff`), qui cite l'équipe avec les postes ; les noms entrent dans `named_people()`.
+- **Biais crédible** (demande de Maixent : « il manque un marteau → qui bosse ici ? ») : avant,
+  le preneur de l'arme travaillait sur place dans 1 cas sur 22 ; `CrimeBuilder.execute`
+  préfère maintenant (70 %, flux `workplace-tool-v1`) un outil gardé au lieu de travail du
+  coupable quand il en existe un. Mesure : 7 cas sur 27, et un innocent y travaille aussi dans
+  21 cas — une piste, jamais une certitude.
+
 ## Un seul témoin de l'acte — v32 (13 octobre 2026, côté backend)
 
 APK `builds/nexus-city-solo-debug-v32.apk`, versionCode 32 / `0.32-causal`, même signature.

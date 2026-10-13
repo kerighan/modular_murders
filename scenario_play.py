@@ -68,6 +68,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
     evenings = build_evenings(crime, evidence, seed)
     registrations = build_registrations(crime)
     plan = with_witnesses(project(crime), witnesses)
+    labels = dict(plan.locations)
     population = plan.population
     people = life.people
     artifacts, actions, sources = list(plan.artifacts), list(plan.actions), set(plan.source_ids)
@@ -78,6 +79,29 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         artifacts.append(Artifact(key, kind, text, (source,), population if candidates is None else frozenset(candidates)))
         if claim:
             claims[key] = claim
+
+    def at_place_label(label):
+        return "au " + label[3:] if label.startswith("Le ") else "à " + label
+
+    def stays(pid):
+        """Where this person really sat, as intervals: verified presences, real venue visits, loans."""
+        rows = [(p.place, p.start, p.end) for p in evidence.presences if p.person == pid]
+        rows += [(v.place, v.arrival.times[-1], v.until) for v in crime.venue_presences if v.person == pid]
+        rows += [(b.outbound.nodes[-1], b.outbound.times[-1], b.inbound.times[0]) for b in crime.mundane_borrowings if b.actor == pid]
+        return rows
+
+    def shared_sightings(pid):
+        seen = []
+        for place, start, end in stays(pid):
+            for other in sorted(population):
+                if other == pid:
+                    continue
+                for other_place, other_start, other_end in stays(other):
+                    if other_place == place and max(start, other_start) < min(end, other_end):
+                        minute = ((max(start, other_start) + 7) // 15) * 15
+                        if (other, place) not in {(o, pl) for o, pl, _ in seen}:
+                            seen.append((other, place, minute))
+        return seen
 
     # Player learns appearances by actually meeting people; the offline solver
     # must not lend its omniscient profile table to the player's deductions.
@@ -114,9 +138,17 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         if borrowing:
             keeper = next(k for k in crime.keepers if k.id == borrowing.permission_by)
             observation_text = f"Dans la journée, j'avais emprunté un objet à {dict(plan.locations)[keeper.place]}. {keeper.name} était là."
+        # Who this person really saw: other guests of the same venue at the same time.
+        # True for everyone, the author included; a glimpse names people and places,
+        # it never clears anyone on its own.
+        sightings = [{"person": other, "place": place, "minute": minute} for other, place, minute in shared_sightings(p.id)]
+        if sightings:
+            seen = "; ".join(f"{at_place_label(labels[row['place']])}, j'ai aperçu {people[row['person']].name} vers {spoken_time(row['minute'])}" for row in sightings)
+            observation_text = (observation_text + "\n" if borrowing else "") + seen[0].upper() + seen[1:] + "."
         observation_reveals = old.reveals if old else ()
-        if borrowing or not observation_reveals:
-            add(observation_key, "personal_account", observation_text, observation_key)
+        if borrowing or sightings or not observation_reveals:
+            add(observation_key, "personal_account", observation_text, observation_key,
+                claim={"sightings": sightings} if sightings else None)
             observation_reveals = (observation_key,) + observation_reveals
         actions.append(DiscoveryAction("observe:" + p.id, Operation.INTERVIEW,
             "Demander les observations", p.home, p.id,
@@ -152,7 +184,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                             b.kind in (Link.PARTNERS, Link.EXES) and set(b.people) == {pid, victim} for b in pictures)}
             add(key, "relationship", "Albums et photos conservés.\n" + "\n".join(captions)
                 + "\nCes souvenirs ne prouvent pas une implication dans le crime.", key,
-                claim={"concerns": romantic})
+                claim={"concerns": romantic, "photos": [[*b.people, b.kind.value] for b in pictures]})
             actions.append(DiscoveryAction("photos:" + home, Operation.READ,
                 "Regarder les albums et photos", home, "album:" + home, (key,)))
         if crime.kernel.roles.victim in resident_ids:
@@ -169,7 +201,10 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         found = tuple(s.tool for s in crime.tool_states if s.place == home and not s.concealed)
         mugs = tuple("mug:" + p.id for p in residents)
         objects["search:" + home] = found + mugs
-        names = [next(t.kind.label for t in crime.inventory if t.id == tool) for tool in found]
+        names = [next(t.kind.label for t in crime.inventory if t.id == tool)
+                 + (" (" + ("du " if labels[tool.split("_")[0]].startswith("Le ") else "de ") + labels[tool.split("_")[0]].removeprefix("Le ") + ")"
+                    if tool.startswith(("bar_", "restaurant_")) else "")  # a venue's property, found here
+                 for tool in found]
         add("objects:" + home, "objects", "Objets examinés : " + ", ".join(names + ["tasse personnelle de " + p.name for p in residents]) + ".", "objects:" + home)
         actions.append(DiscoveryAction("search:" + home, Operation.SEARCH, "Examiner les objets du logement",
             home, "fixture:room:" + home, ("objects:" + home,)))
@@ -292,6 +327,16 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
             p.id for p in evidence.presences if p.witness == keeper.id))
         actions.append(DiscoveryAction("venue_guests:" + keeper.place, Operation.INTERVIEW,
             "Demander les clients de la soirée", keeper.place, keeper.id, (key,)))
+        # Who works here: the staff knows its own team. A missing tool points at the
+        # people with the keys, as a lead and nothing more.
+        team = [people[pid] for pid in sorted(population) if people[pid].workplace.value == keeper.place]
+        job = {"table_service": "service en salle", "bar_management": "gestion du bar", "cooking": "cuisine",
+               "restaurant_management": "gestion du restaurant", "accounting": "comptabilité"}
+        roster = ("Dans l'équipe, il y a " + ", ".join(f"{p.name} ({job.get(p.occupation.value, p.occupation.value)})" for p in team) + "."
+                  if team else "L'équipe, c'est moi et des extras de passage. Personne d'autre à vous citer.")
+        add("venue_staff:" + keeper.place, "venue_staff", roster, "venue_staff:" + keeper.place)
+        actions.append(DiscoveryAction("venue_staff:" + keeper.place, Operation.INTERVIEW,
+            "Demander qui travaille ici", keeper.place, keeper.id, ("venue_staff:" + keeper.place,)))
     # Extract public semantics of an assailant description, not its hidden mask.
     for w in witnesses.witnesses:
         for row in statements(witnesses, w.id):
@@ -316,6 +361,15 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                 claims[key] = {"description": aspect, "value": getattr(a, aspect).value}
             actions.append(DiscoveryAction(key, Operation.CAMERA, "Consulter la caméra locale",
                 cam.place, "camera:" + cam.place, (key,), ("scene_body",)))
+    # A noted loan has a name: the keeper remembers who took the object. The lab will
+    # say whether it served, or whether it was only borrowed.
+    for index, artifact in enumerate(artifacts):
+        if artifact.id.startswith("stock:") and "On en a prêté un." in artifact.text:
+            _, place, kind = artifact.id.split(":", 2)
+            borrowers = [people[b.actor].name for b in crime.mundane_borrowings
+                         if b.outbound.nodes[-1] == place and next(t.kind.value for t in crime.inventory if t.id == b.tool) == kind]
+            if borrowers:
+                artifacts[index] = replace(artifact, text=artifact.text.replace("On en a prêté un.", "On en a prêté un à " + borrowers[0] + "."))
     plan = replace(plan, artifacts=tuple(artifacts), actions=tuple(actions), source_ids=frozenset(sources), projection_version=3)
     return PlayCase(seed, crime, life, witnesses, evidence, plan, claims, objects, evenings, registrations)
 
@@ -642,6 +696,10 @@ class PlaySession:
             self.object_places[obj] = source_place
         if action.startswith(("search_bin:", "search_cupboard:")) or action == "collect_object":
             self.carried.update(discovered)
+        if action.startswith("search:"):
+            # A venue's tool found in somebody's home leaves with the detective: the lab
+            # will say whether it served, or whether it was only borrowed.
+            self.carried.update(obj for obj in discovered if obj.startswith(("bar_", "restaurant_")))
         operation = next(a.operation for a in self.case.plan.actions if a.id == action)
         self._advance((3 if "search" in self.skills else 10) if operation is Operation.SEARCH else
                       3 if "rapport" in self.skills and operation in (Operation.INTERVIEW, Operation.VERIFY) else 5)
@@ -711,8 +769,8 @@ class PlaySession:
             self.journal.append({"id": marker, "kind": "recording_window", "text": text})
         return text, fresh
 
-    def fingerprint(self, obj):
-        if "fingerprints" not in self.skills:
+    def fingerprint(self, obj, trained=None):
+        if not (self.skills.__contains__("fingerprints") if trained is None else trained):
             raise ValueError("Il faut la compétence Relevé d'empreintes (un des deux slots).")
         if obj not in self.found:
             raise ValueError("L'objet doit avoir été examiné ou récupéré.")
@@ -786,7 +844,10 @@ class PlaySession:
     def object_label(self, obj):
         if obj.startswith("mug:"):
             return "tasse personnelle de " + self.case.life.people[obj.removeprefix("mug:")].name
-        return next(t.kind.label for t in self.case.crime.inventory if t.id == obj)
+        label = next(t.kind.label for t in self.case.crime.inventory if t.id == obj)
+        if obj.startswith(("bar_", "restaurant_")):  # a venue's property, wherever it was found
+            label += " (" + ("du " if self.locations[obj.split("_")[0]].startswith("Le ") else "de ") + self.locations[obj.split("_")[0]].removeprefix("Le ") + ")"
+        return label
 
     def leads(self):
         """Detective's organization of already acquired material, not NPC advice.
@@ -893,6 +954,64 @@ class PlaySession:
             rows.append({"person": pid, "state": state, "details": details,
                          "reasons": reasons, "destination": destination})
         return tuple(rows)
+
+    def social_graph(self):
+        """Who knows whom, as the detective heard or read it: an ego graph around the victim.
+        Relations come from the answers actually given and the albums actually read; a
+        pair someone said they did not know is listed apart. Never the private catalogue."""
+        life, victim = self.case.life, self.case.crime.kernel.roles.victim
+        population, known = self.case.plan.population, dict(self.state.known)
+        ids = {row["id"] for row in self.journal}
+        names = {pid: life.people[pid].name for pid in life.people}
+        edges, strangers = {}, []
+
+        def add(a, b, kind, source):
+            if a == b:
+                return
+            edge = edges.setdefault(tuple(sorted((a, b))), {"kinds": [], "sources": []})
+            if kind not in edge["kinds"]:
+                edge["kinds"].append(kind)
+            if source not in edge["sources"]:
+                edge["sources"].append(source)
+
+        def bonds_between(a, b, source):
+            bonds = life.links(a, b)
+            for bond in bonds:
+                add(a, b, bond.kind.value, source)
+            if not bonds and life.knows(a, b):
+                add(a, b, "messages", source)
+            return bool(bonds) or life.knows(a, b)
+
+        for pid in sorted(population):
+            if f"context:{pid}:relation" in ids:
+                bonds_between(pid, victim, names[pid])
+            if f"context:{pid}:work" in ids:
+                for bond in life.bonds:
+                    if bond.kind is Link.COLLEAGUES and pid in bond.people:
+                        add(*bond.people, "collègues", names[pid])
+            if f"context:{pid}:circle" in ids:
+                for other in population:
+                    if other != pid and life.knows(pid, other) and life.links(other, victim):
+                        add(other, victim, "proche", names[pid])
+            for other in sorted(population):
+                if f"about:{pid}:{other}" in ids:
+                    if not bonds_between(pid, other, names[pid]):
+                        strangers.append([pid, other])
+                    for fact in life.ordinary:
+                        if fact.kind in ("ex_and_partner", "sour_breakup") and set(fact.people) == {pid, other}:
+                            add(pid, other, "rivalité" if fact.detail == "venom" else "ex en paix", names[pid])
+        for key, claim in self.case.claims.items():
+            if key in known and "photos" in claim:
+                for a, b, kind in claim["photos"]:
+                    add(a, b, kind, "album")
+        named, remaining = self.named_people(), self.remaining()
+        people = {victim} | {pid for pair in edges for pid in pair} | {pid for pair in strangers for pid in pair}
+        return {"center": victim,
+                "nodes": [{"id": pid, "name": names[pid] if pid == victim or pid in named else "?", "victim": pid == victim,
+                           "excluded": pid != victim and pid not in remaining}  # faded once ruled out
+                          for pid in sorted(people, key=lambda p: (p != victim, p))],
+                "edges": [{"a": a, "b": b, **edge} for (a, b), edge in sorted(edges.items())],
+                "strangers": strangers}
 
     def talk_about(self, person, other):
         if person not in self.case.plan.population or self.person_place(person) != self.place:

@@ -1,5 +1,27 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.34-causal** : `../builds/nexus-city-solo-debug-v34.apk`.
+Parler à un suspect coûte 1 PA et donne trois questions neuves (compteur
+« 1/3 » dans la boîte ; relectures gratuites) ; au-delà, une jauge de
+persuasion réussie offre la question suivante, sinon 1 PA ; « Contact
+humain » saute la jauge. Le relevé d'empreintes est ouvert à tous avec une
+jauge, sauté par la compétence. La question « Témoin » dit maintenant qui le
+suspect a aperçu, où et à quelle heure (trois réponses sur quatre sont
+informatives, contre une sur vingt-cinq). Le serveur nomme l'emprunteur d'un
+objet prêté ; l'objet se retrouve chez lui, étiqueté « (du Néon Bleu) », on
+l'emporte au labo : pas de sang, fausse piste refermée. Les PNJ gardent
+leurs coûts actuels. Même moteur, même signature, nouvelles affaires.
+
+
+Version **0.33-causal** : `../builds/nexus-city-solo-debug-v33.apk`.
+Onglet « Réseau » du carnet : qui connaît qui autour de la victime, d'après
+les témoignages, la question « métier » et les albums ; les personnes
+écartées s'estompent ; toucher un nom ouvre sa fiche. Le personnel d'un
+établissement peut dire qui y travaille (« Qui travaille ici ? »), et quand
+un outil manque, celui qui l'a pris y travaille plus souvent qu'avant (une
+piste, pas une preuve). Même moteur, même signature, nouvelles affaires.
+
+
 Version **0.32-causal** : `../builds/nexus-city-solo-debug-v32.apk`.
 Un seul témoin de l'acte sur la scène du crime ; un second témoin éventuel a
 vu autre chose (un départ, un passage). Même moteur, même signature,

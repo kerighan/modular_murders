@@ -546,6 +546,7 @@ def make_walk(person, nodes, start, streets):
 
 class CrimeBuilder:
     def __init__(self, seed=42):
+        self.seed = seed
         self.rng = random.Random(seed)
 
     def prepare(self, kernel):
@@ -698,8 +699,14 @@ class CrimeBuilder:
         domain = [row for row in domain if METHOD_FOR_TOOL[row[0].kind] is chosen]
         sources = tuple(kind for kind in AcquisitionKind if any(row[8] is kind for row in domain))
         selected_source = acquisition or self.rng.choice(sources)
-        tool, index, mode, selected_plan, departure, route, approach_nodes, prep_nodes, source, pickup, waits, selected_situation, outcomes = self.rng.choice(
-            [row for row in domain if row[8] is selected_source])
+        rows = [row for row in domain if row[8] is selected_source]
+        picked = self.rng.choice(rows)
+        # Someone who works where a tool is kept reaches for it more often than a visitor
+        # would: the "who works here?" lead is then worth following, without being proof.
+        at_work = [row for row in rows if row[0].owner in ("bar", "restaurant") and row[0].owner == a.workplace.value]
+        if at_work and random.Random(f"workplace-tool-v1:{self.seed}").random() < .7:
+            picked = random.Random(f"workplace-tool-v1:{self.seed}:row").choice(at_work)
+        tool, index, mode, selected_plan, departure, route, approach_nodes, prep_nodes, source, pickup, waits, selected_situation, outcomes = picked
         duration = sum(streets.duration(u, w) for u, w in zip(approach_nodes, approach_nodes[1:]))
         routine = make_walk(v.id, route, departure, streets)
         observation = routine.times[1] if selected_situation is SituationKind.TRACKING else routine.times[-1]
@@ -825,6 +832,11 @@ class CrimeBuilder:
                 raise NoFeasibleCrime("No feasible independent ordinary loan")
             return ()
         tool, person, path, cost = self.rng.choice(choices)
+        # The people who work where the tool is kept borrow it more often than visitors:
+        # a missing object is a lead toward the team, and sometimes an honest false one.
+        at_work = [row for row in choices if row[1].workplace.value == row[0].owner]
+        if at_work and random.Random(f"workplace-loan-v1:{self.seed}").random() < .7:
+            tool, person, path, cost = random.Random(f"workplace-loan-v1:{self.seed}:row").choice(at_work)
         outward = make_walk(person.id, path, 12 * 60 - cost, streets)
         inward = make_walk(person.id, tuple(reversed(path)), 12 * 60 + 1, streets)
         return (MundaneBorrowing(tool.id, person.id, outward, inward, f"staff:{tool.place}"),)

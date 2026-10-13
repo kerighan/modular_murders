@@ -305,3 +305,48 @@ def test_the_scene_hands_out_one_trait_and_the_camera_shows_another():
             assert camera.aspect is not Aspect.SILHOUETTE and camera.aspect not in described
             checked += 1
     assert checked >= 10
+
+
+def test_social_graph_only_holds_what_was_heard_or_read_and_fades_the_ruled_out():
+    from scenario_play import sample_playable, PlaySession
+    case = sample_playable(242)
+    life, victim = case.life, case.crime.kernel.roles.victim
+    s = PlaySession(case, ("search", "rapport"), strict=False, difficulty="libre")
+    assert s.social_graph()["edges"] == [] and [n["id"] for n in s.social_graph()["nodes"]] == [victim]
+    a, b = sorted(case.plan.population)[:2]
+    for pid in (a, b):
+        s.place = life.people[pid].home
+        s.do("meet:" + pid)
+        s.ask_context(pid, "relation")
+    s.place = life.people[a].home
+    s.talk_about(a, b)
+    graph = s.social_graph()
+    pairs = {(e["a"], e["b"]) for e in graph["edges"]}
+    for pid in (a, b):
+        assert ((min(pid, victim), max(pid, victim)) in pairs) == (bool(life.links(pid, victim)) or life.knows(pid, victim))
+    assert ((a, b) in pairs) == (bool(life.links(a, b)) or life.knows(a, b)) or [a, b] in graph["strangers"]
+    for edge in graph["edges"]:
+        assert edge["kinds"] and edge["sources"]
+    assert all(not n["excluded"] for n in graph["nodes"])
+    s.cleared.add(a)  # ruled out: still drawn, but faded
+    assert next(n for n in s.social_graph()["nodes"] if n["id"] == a)["excluded"]
+
+
+def test_venue_staff_name_their_team_and_a_workplace_tool_sometimes_points_at_the_culprit():
+    from scenario_play import sample_playable, PlaySession
+    case = sample_playable(242)
+    s = PlaySession(case, ("search", "rapport"), strict=False, difficulty="libre")
+    for keeper in case.crime.keepers:
+        s.place = keeper.place
+        text = s.do("venue_staff:" + keeper.place)
+        team = [p for p in case.plan.population if case.life.people[p].workplace.value == keeper.place]
+        for pid in team:
+            assert case.life.people[pid].name in text and pid in s.named_people()
+    at_work = venue = 0
+    for seed in range(60):
+        c = sample_playable(seed)
+        taken = [t for t in c.crime.transfers if t.kind.value == "acquisition"]
+        if taken and taken[0].origin in ("bar", "restaurant"):
+            venue += 1
+            at_work += c.life.people[c.crime.kernel.roles.author].workplace.value == taken[0].origin
+    assert venue and 0 < at_work < venue  # a lead worth following, never a certainty

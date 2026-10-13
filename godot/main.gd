@@ -121,6 +121,8 @@ var notebook_dossier: VBoxContainer
 var notebook_notes: VBoxContainer
 var notebook_leads: VBoxContainer
 var notebook_threads: VBoxContainer
+var notebook_network: VBoxContainer
+var ego_graph: Control
 var notebook_contacts: VBoxContainer
 var notebook_timeline: VBoxContainer
 var notebook_tabs := {}
@@ -1338,10 +1340,10 @@ func _build_hud() -> void:
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 2)
 	reading.add_child(tabs)
-	for id in ["threads", "evidence", "leads", "timeline", "notes", "contacts", "people"]:
+	for id in ["threads", "evidence", "leads", "timeline", "network", "notes", "contacts", "people"]:
 		var tab := Button.new()
 		tab.toggle_mode = true
-		tab.text = {"threads": "Fils", "evidence": "Éléments", "people": "Fiche", "contacts": "Contacts", "leads": "Pistes", "timeline": "Horaires", "notes": "Notes"}[id]
+		tab.text = {"threads": "Fils", "evidence": "Éléments", "people": "Fiche", "contacts": "Contacts", "leads": "Pistes", "timeline": "Horaires", "network": "Réseau", "notes": "Notes"}[id]
 		tab.custom_minimum_size = Vector2(0, 40)
 		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tab.add_theme_font_size_override("font_size", 13)
@@ -1370,9 +1372,10 @@ func _build_hud() -> void:
 	notebook_notes = VBoxContainer.new()
 	notebook_leads = VBoxContainer.new()
 	notebook_threads = VBoxContainer.new()
+	notebook_network = VBoxContainer.new()
 	notebook_contacts = VBoxContainer.new()
 	notebook_timeline = VBoxContainer.new()
-	for section in [notebook_evidence, notebook_dossier, notebook_notes, notebook_leads, notebook_threads, notebook_contacts, notebook_timeline]:
+	for section in [notebook_evidence, notebook_dossier, notebook_notes, notebook_leads, notebook_threads, notebook_network, notebook_contacts, notebook_timeline]:
 		section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		section.add_theme_constant_override("separation", 18)
 		dossier.add_child(section)
@@ -1668,6 +1671,7 @@ func _draw_notebook() -> void:
 	_draw_notebook_notes()
 	_draw_notebook_leads()
 	_draw_notebook_threads()
+	_draw_notebook_network()
 	_draw_notebook_contacts()
 	_draw_notebook_timeline()
 	var rows: Array = view["notebook"].duplicate(true)
@@ -1878,6 +1882,7 @@ func _set_notebook_tab(id: String) -> void:
 	notebook_notes.visible = id == "notes"
 	notebook_leads.visible = id == "leads"
 	notebook_threads.visible = id == "threads"
+	notebook_network.visible = id == "network"
 	notebook_contacts.visible = id == "contacts"
 	notebook_timeline.visible = id == "timeline"
 	for key in notebook_tabs:
@@ -2225,6 +2230,19 @@ func _draw_notebook_threads() -> void:
 				var pad := Control.new()
 				pad.custom_minimum_size.y = 4
 				body.add_child(pad)
+
+func _draw_notebook_network() -> void:
+	# Who knows whom around the victim, from testimonies and albums only; ruled-out people fade.
+	if ego_graph == null:
+		_notebook_text(notebook_network, "QUI CONNAÎT QUI", "Autour de la victime : les liens que les témoignages, la question « métier » et les albums ont révélés. Les personnes écartées s'estompent. Touchez un nom pour ouvrir sa fiche.", Color("8fd9d5"))
+		ego_graph = preload("res://ego_graph.gd").new()
+		ego_graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ego_graph.person_tapped.connect(_select_notebook_suspect)
+		notebook_network.add_child(ego_graph)
+	var network: Dictionary = view.get("network", {})
+	ego_graph.set_graph(network)
+	var ties: int = network.get("edges", []).size()
+	notebook_tabs.network.text = "Réseau · %d" % ties if ties > 0 else "Réseau"
 
 func _locate_residence(home: Dictionary) -> void:
 	# This is a camera shortcut, not a move or a free apartment entrance.

@@ -47,7 +47,7 @@ func start(challenge_kind: String, difficulty: float) -> void:
 	flash = 0.0
 	last_score = -1.0
 	active = true
-	title.text = {"lockpick": "Crochetage", "search": "Fouille", "persuasion": "Persuasion"}.get(kind, kind.capitalize())
+	title.text = {"lockpick": "Crochetage", "search": "Fouille", "persuasion": "Persuasion", "fingerprint": "Relevé d'empreintes"}.get(kind, kind.capitalize())
 	hint.text = "Touchez quand l'aiguille est dans la zone"
 	visible = true
 	_layout()

@@ -176,11 +176,14 @@ func show_cue(cue: Dictionary, actions: Array) -> void:
 	waiting = false
 	pages.clear()
 	options = actions.duplicate(true)
-	context.text = "%d question%s restante%s" % [cue.get("remaining", 0), "s" if cue.get("remaining", 0) != 1 else "", "s" if cue.get("remaining", 0) != 1 else ""] if active else "Fin de conversation"
+	# Suspects: a budget of fresh questions per action point ("2/3"); rereads are free.
+	var total: int = int(cue.get("slots_total", 0))
+	var used: int = total - int(cue.get("remaining", 0))
+	context.text = ("Questions %d/%d" % [used, total] + (" · %d PA" % remaining_pa if remaining_pa >= 0 else "")) if active and total > 0 else "%d question%s restante%s" % [cue.get("remaining", 0), "s" if cue.get("remaining", 0) != 1 else "", "s" if cue.get("remaining", 0) != 1 else ""] if active else "Fin de conversation"
 	if cue.has("context"):
 		context.text = str(cue.context)
-	if active and remaining_pa == 0:
-		context.text += " · 0 PA · Relecture gratuite"
+	if active and remaining_pa == 0 and int(cue.get("remaining", 0)) == 0:
+		context.text += " · Relecture gratuite"
 	reply_context = context.text
 	question.text = "Vous · " + str(cue.question) if cue.get("question") != null else ""
 	question.visible = not question.text.is_empty()

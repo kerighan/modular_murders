@@ -61,6 +61,8 @@ def travel(game, target):
                 return
     while game.cost(target) > game.player.ap:
         game.play(("end",))
+    if game.player.place == target:  # an ended turn may have walked you out to this street
+        return
     if target in game.homes and game.occupants(target):
         return travel(game, target)
     game.play(("move" if parent else "walk", target))
@@ -399,7 +401,8 @@ def test_home_furniture_stays_after_documents_photos_and_search_are_consumed():
             assert physical_fixtures(game) == before
     assert "read_diary" in completed
     assert len(completed) >= 2
-    assert all(not f["selectable"] for f in game.view(game.player)["fixtures"])
+    # Only the print kit may still offer something: anyone may try to lift a print on what was found.
+    assert all(not f["selectable"] or f["id"] == "objects" for f in game.view(game.player)["fixtures"])
 
 
 @pytest.mark.parametrize("place", ("alley", "crime_scene", "victim_street", "promenade", "cctv"))
@@ -479,18 +482,13 @@ def test_every_suspect_has_the_same_menu_and_question_costs(seed):
             menu = current
         assert current == menu
         for topic in ("motive", "observations", "evening"):
-            # Same one-PA interview cost for a concrete reply or no memory;
-            # repeats never charge again; only the public cost label changes.
-            before = game.player.ap
+            # Opening the conversation paid for a batch: a fresh question takes a slot,
+            # never a point; a repeat takes nothing at all.
+            before, slots = game.player.ap, game.slots
             game.play(("ask", topic))
-            assert game.player.ap == before - 1
-            if not game.player.ap:
-                game.play(("stop",))
-                game.play(("end",))
-                approach(game, pid)
-                break
+            assert game.player.ap == before and game.slots == slots - 1
             game.play(("ask", topic))
-            assert game.player.ap == before - 1
+            assert game.player.ap == before and game.slots == slots - 1
         after = {k: label.split(" (", 1)[0].removesuffix(" · Reposer gratuitement")
                  for k, label in game.options(True).items() if k[0] == "ask"}
         assert after == {k: label.split(" (", 1)[0] for k, label in menu.items()}
@@ -532,11 +530,11 @@ def test_all_suspect_questions_cost_one_pa_once_and_repeat_free_at_zero(topic):
     game = fresh()
     discover(game, "inspect_scene")
     approach(game, sorted(game.case.plan.population)[0])
-    game.player.ap = 1
+    game.player.ap, game.slots = 0, 1  # last slot of the batch, no point left
     key = ("ask", topic)
-    assert game.question_cost(key) == 1
+    assert game.question_cost(key) == 0
     game.play(key)
-    assert game.player.ap == 0 and game.question_cost(key) == 0
+    assert game.player.ap == 0 and game.slots == 0 and game.question_cost(key) == 0
     first = game.cue["text"]
     before = game.session.at, list(game.session.journal), game.tick
     for _ in range(2):
@@ -559,9 +557,9 @@ def test_questions_about_each_other_person_are_individually_paid_and_repeatable(
     a, b, c = sorted(int(pid[1:]) for pid in game.case.plan.population)[:3]
     approach(game, "p%d" % a)
     key = ("talk_about", a, b)
-    game.player.ap = 1
+    game.player.ap, game.slots = 0, 1
     game.play(key)
-    assert game.player.ap == 0
+    assert game.player.ap == 0 and game.slots == 0
     first, at, journal = game.cue["text"], game.session.at, list(game.session.journal)
     game.play(key)
     assert (game.cue["text"], game.session.at, game.session.journal) == (first, at, journal)
@@ -605,10 +603,11 @@ def test_legacy_free_biography_history_keeps_old_pa_then_new_questions_are_paid(
     assert restored.player.ap == before
     assert restored.session.journal == game.session.journal
     assert restored.priced_from == len(saved["history"])
+    slots = restored.slots
+    restored.play(("ask", "work"))  # a fresh question within the batch takes a slot, not a point
+    assert restored.player.ap == before and restored.slots == slots - 1
     restored.play(("ask", "work"))
-    assert restored.player.ap == before - 1
-    restored.play(("ask", "work"))
-    assert restored.player.ap == before - 1
+    assert restored.player.ap == before and restored.slots == slots - 1
     again = CausalGame.restore(game.seed, "Ada", restored.snapshot(), True)
     assert again.view(again.player) == restored.view(restored.player)
 
@@ -684,10 +683,10 @@ def test_diary_appointment_can_be_asked_of_every_suspect_without_a_menu_tell():
         before = game.session.remaining()
         before_ap = game.player.ap
         game.play(("ask", "appointment"))
-        assert game.player.ap == before_ap - 1
+        assert game.player.ap == before_ap  # within the batch the conversation already paid
         at = game.session.at
         game.play(("ask", "appointment"))
-        assert game.player.ap == before_ap - 1 and game.session.at == at
+        assert game.player.ap == before_ap and game.session.at == at
         assert game.session.remaining() == before
         if pid == appointment.host:
             assert "rendez-vous" in game.cue["text"] and clock(appointment.starts_at) in game.cue["text"]

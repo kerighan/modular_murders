@@ -1,7 +1,11 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.42-causal** : `../builds/nexus-city-solo-debug-v42.apk`, moteur `causal-3d-v10`
-(sauvegardes conservées). Un suspect ne nomme que les gens qu'il connaît ; un inconnu est
+Version **0.43-causal** : `../builds/nexus-city-solo-debug-v43.apk`, moteur `causal-3d-v11`
+(sauvegardes v42 archivées, nouvelle affaire). Un logement partagé porte le nom de tous ses
+habitants, et vivre avec la victime n'est plus un indice : des innocents partagent aussi leur
+logement.
+
+Version 0.42 : moteur `causal-3d-v10`. Un suspect ne nomme que les gens qu'il connaît ; un inconnu est
 décrit par un ou deux traits à recouper avec les portraits du carnet.
 
 Version 0.41 : Le commissariat a sa propre salle néon-noir : comptoir d'accueil

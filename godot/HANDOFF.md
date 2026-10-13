@@ -1,5 +1,24 @@
 # Passation : client Godot
 
+## Logements partagés sans indice — v43 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v43.apk`, versionCode 43 / `0.43-causal`, moteur
+`causal-3d-v11` (les sauvegardes v42 sont archivées au lancement : la ville de certaines seeds
+change). Retour de Maixent sur la seed 967 : « Son domicile : Logement de Inès » pour Nadia.
+
+- `scenario_play.build_case` : un logement partagé s'appelle « Logement de Nadia et Inès »
+  (victime en tête, élision « d'Oscar »).
+- `causal_game.home_labels(known)` : libellés du carnet (« Chez Nadia », puis « Chez Nadia et
+  Inès » quand Inès est identifiée, « Appartement n » sinon) ; l'écran d'ouverture passe par
+  ces libellés (« Son domicile : Chez Nadia », « sans vie au Néon Bleu »).
+- **Indice supprimé** : la victime ne partageait son logement qu'avec le coupable (branche
+  « contrôle » du noyau, 7 seeds sur 60), donc « 1 suspect » sur sa porte désignait l'assassin.
+  `scenario_kernel.py` tire sur un flux séparé (`cohabitation-v1:seed`, les autres tirages des
+  seeds ne bougent pas) : le couple ordinaire vit ensemble une fois sur deux, et hors contrôle
+  l'ami de la victime (`roles.other`) est son colocataire 35 % du temps. Audit 60 seeds :
+  victime seule 43, avec un innocent 10, avec le coupable 7 ; colocations innocentes 32.
+  Les colocataires gardent récit de soirée, placard et archives du logement.
+
 ## On ne nomme que ceux qu'on connaît — v42 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v42.apk`, versionCode 42 / `0.42-causal`, même moteur

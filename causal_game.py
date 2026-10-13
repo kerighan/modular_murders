@@ -15,7 +15,7 @@ from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v10"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
+VERSION = "causal-3d-v11"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
 TURN_MINUTES = 30  # one turn of six actions on the case clock
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
@@ -231,9 +231,22 @@ class CausalGame:
         return {"won": False, "title": "Affaire classée", "mistakes": s.mistakes,
                 "text": closed + "\n" + author.name + " ne sera jamais inquiété(e) : " + self.case.crime.method.label.lower() + ", et personne pour le prouver."}
 
+    def home_labels(self, known):
+        """Place labels as the detective may say them: a home is named after the people
+        identified there (the victim always), otherwise by its number."""
+        labels = dict(self.session.locations)
+        victim = self.case.crime.kernel.roles.victim
+        for home in self.homes:
+            residents = [p for p in self.case.life.people.values() if p.home == home]
+            identified = [p.name for p in residents if p.id == victim or "profile:" + p.id in known]
+            if residents:
+                labels[home] = "Chez " + " et ".join(identified) if identified else "Appartement " + home.removeprefix("home")
+        return labels
+
     def start(self):
         victim = self.case.life.people[self.case.crime.kernel.roles.victim]
-        text = f"On a retrouvé {victim.name} sans vie à {self.session.locations[self.case.crime.scene]}.\nLe lendemain, 8 h. Les lieux viennent d'être ouverts aux enquêteurs.\nSon domicile : {self.session.locations[victim.home]}."
+        labels = self.home_labels(dict(self.session.state.known))
+        text = f"On a retrouvé {victim.name} sans vie {at_label(labels[self.case.crime.scene])}.\nLe lendemain, 8 h. Les lieux viennent d'être ouverts aux enquêteurs.\nSon domicile : {labels[victim.home]}."
         self._cue(text, name=self.player.name)
         self.cue["id"] = 0
         self.cue["context"] = "Votre affaire"
@@ -866,13 +879,8 @@ class CausalGame:
         options = self.options() if self.equipped else {}
         dialogue_options = [[list(key), label, {"cost": self.question_cost(key),
                              "available": key in options}] for key, label in self.options(True).items()] if self.speaker is not None else []
-        labels = dict(s.locations)
+        labels = self.home_labels(known)
         victim = self.case.life.people[self.case.crime.kernel.roles.victim]
-        for home in self.homes:
-            residents = [p for p in self.case.life.people.values() if p.home == home]
-            identified = [p.name for p in residents if p.id == victim.id or "profile:" + p.id in known]
-            if residents:
-                labels[home] = "Chez " + " et ".join(identified) if identified else "Appartement " + home.removeprefix("home")
         adjacency = {n.id: [q for q, _ in self.case.witnesses.streets.neighbors(n.id)] for n in self.case.witnesses.streets.nodes}
         for service in ("lab", "morgue"):
             parent = SERVICE_PARENTS[service]

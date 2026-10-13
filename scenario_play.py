@@ -68,6 +68,13 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
     evenings = build_evenings(crime, evidence, seed)
     registrations = build_registrations(crime)
     plan = with_witnesses(project(crime), witnesses)
+    # A shared home is named after everyone who lives there, the victim first.
+    victim_id = crime.kernel.roles.victim
+    homes = {}
+    for p in sorted(life.people.values(), key=lambda p: (p.id != victim_id, p.id)):
+        homes.setdefault(p.home, []).append(p.name)
+    plan = replace(plan, locations=tuple((key, "Logement " + ("d'" if names[0][0] in "AEIOUÉÈÊÎÔÛH" else "de ") + " et ".join(names)
+                                          if key in homes and (names := homes[key]) else label) for key, label in plan.locations))
     labels = dict(plan.locations)
     population = plan.population
     people = life.people

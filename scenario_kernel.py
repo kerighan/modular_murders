@@ -569,6 +569,7 @@ class KernelBuilder:
         if type(people_count) is not int or not 6 <= people_count <= 12:
             raise ValueError("A cast of 6 to 12 people, including the victim")
         self.people_count = people_count
+        self.seed = seed
         self.rng = random.Random(seed)
 
     def sample(self, *, motive=None, context=None, stake=None):
@@ -607,6 +608,18 @@ class KernelBuilder:
         # root's link. These imply neither conflict nor guilt nor an automatic clue.
         relationships = [Relationship("ordinary_friendship", RelationKind.FRIENDS, tuple(neutral[:2]), -500 * DAY),
                          Relationship("ordinary_romance", RelationKind.ROMANTIC, tuple(neutral[1:3]), -250 * DAY)]
+        # The ordinary couple lives together half the time, on its own stream so that
+        # existing cases keep their draws: a shared home must never point at the culprit.
+        housing = random.Random(f"cohabitation-v1:{self.seed}")
+        if housing.random() < 0.5:
+            x, y = (next(i for i, p in enumerate(people) if p.id == pid) for pid in neutral[1:3])
+            resources = [r for r in resources if r.id != people[y].home]
+            people[y] = replace(people[y], home=people[x].home)
+        # ... and the victim's friend is sometimes their flatmate: someone living with the
+        # victim is a lead, never a verdict.
+        if housing.random() < 0.35 and premise.motive is not Motive.CONTROL:
+            resources = [r for r in resources if r.id != people[other].home]
+            people[other] = replace(people[other], home=people[v].home)
         if premise.motive is Motive.CONTROL:
             mechanism = mechanism or rng.choice(tuple(ControlMechanism))
             relationships.extend((Relationship("root_romance", RelationKind.ROMANTIC, (roles.author, roles.victim), -rng.randrange(500, 1000) * DAY),

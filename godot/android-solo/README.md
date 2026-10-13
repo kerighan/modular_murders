@@ -1,5 +1,16 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.35-causal** : `../builds/nexus-city-solo-debug-v35.apk`.
+Quartiers avec une identité : couleur de base, accent, skyline et habillage
+propres (mâts et parabole aux Ondes, enseignes et guirlandes au Palace,
+auvent et terrasse au Comptoir, haies et croix à Saint-Vital, canal avec
+garde-fou au Canal, balcons à Verlaine, mâts et bornes au Central), halo de
+couleur par quartier (lumière douce + flaques de néon teintées), liseré de
+trottoir à la couleur du quartier, un coin de chaque parcelle planté, et
+les cellules vides varient (jardin, parking, bassin). Même moteur, même
+signature, enquêtes conservées.
+
+
 Version **0.34-causal** : `../builds/nexus-city-solo-debug-v34.apk`.
 Parler à un suspect coûte 1 PA et donne trois questions neuves (compteur
 « 1/3 » dans la boîte ; relectures gratuites) ; au-delà, une jauge de

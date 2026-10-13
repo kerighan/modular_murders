@@ -10,6 +10,22 @@ const AMBER := Color("ffbe68")
 const CONCRETE := Color("626572")
 const DARK := Color("111b2a")
 const PALETTES := [Color("294c50"), Color("4c3548"), Color("354454"), Color("584743"), Color("455357")]
+# Each district has a face: its own base colour, accent, skyline and street dressing.
+const DISTRICT_STYLES := {
+	"cctv": {"theme": "ondes", "color": Color("2f4256"), "accent": Color("63b8ff"), "height": 1.25, "ground": Color("424c5c")},
+	"police": {"theme": "central", "color": Color("38485e"), "accent": Color("38dfff"), "height": 1.35, "ground": Color("4b5563")},
+	"cabaret": {"theme": "palace", "color": Color("4e2e4a"), "accent": Color("ed43eb"), "height": 0.9, "ground": Color("4a4150")},
+	"alley": {"theme": "traverses", "color": Color("3d3340"), "accent": Color("ff7fa8"), "height": 0.85, "ground": Color("444654")},
+	"bar": {"theme": "neon", "color": Color("23404d"), "accent": Color("38dfff"), "height": 0.9, "ground": Color("3f4e5c")},
+	"restaurant": {"theme": "comptoir", "color": Color("5a4538"), "accent": Color("ffbe68"), "height": 0.8, "ground": Color("524c48")},
+	"hospital": {"theme": "saint-vital", "color": Color("4c5d5f"), "accent": Color("8ff0cf"), "height": 1.0, "ground": Color("4f5d5a")},
+	"lab": {"theme": "saint-vital", "color": Color("3f5456"), "accent": Color("8ff0cf"), "height": 0.9, "ground": Color("4f5d5a")},
+	"crime_scene": {"theme": "canal", "color": Color("2f4652"), "accent": Color("63e1ec"), "height": 1.0, "ground": Color("46535e")},
+	"promenade": {"theme": "canal", "color": Color("2b4a4e"), "accent": Color("63e1ec"), "height": 0.95, "ground": Color("46535e")},
+	"victim_street": {"theme": "verlaine", "color": Color("55433f"), "accent": Color("ffbe68"), "height": 0.95, "ground": Color("4d4a4c")},
+}
+const GRASS := Color("2f5a3c")
+const WATER := Color("1c4a5e")
 const GLYPHS := {
 	"A": [14,17,17,31,17,17,17], "B": [30,17,17,30,17,17,30],
 	"C": [14,17,16,16,16,17,14], "D": [30,17,17,17,17,17,30],
@@ -59,6 +75,7 @@ var occupied_cells := {}
 const CAR_SPEED := 1.9  # units per second: a block in about six seconds
 const TRAIN_SPEED := 7.5
 const TRAIN_INTERVAL := 34.0
+var tinted_pools := {}  # neon pool material per district colour
 var grid_rows := 0
 var grid_cols := 0
 var free_vertical: Array[int] = []  # column lines (x = c * PITCH - PITCH / 2) no merged parcel crosses
@@ -277,13 +294,27 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 		accent = AMBER
 	elif id == "cabaret" or id == "den":
 		accent = PINK
+	var style: Dictionary = DISTRICT_STYLES.get(id, {})
+	if not style.is_empty():
+		color = style.color
+		accent = style.accent
+		height *= float(style.height)
+	elif scenery:
+		# The outskirts borrow the nearest district's face, dimmed by the fade anyway.
+		var nearest := _nearest_district(at)
+		if not nearest.is_empty():
+			color = DISTRICT_STYLES[nearest].color.darkened(0.1)
 	_begin()
 	var parcel: Vector2i = parcel_spans.get(id, Vector2i.ONE)
 	var parcel_width := (parcel.x - 1) * PITCH + 7.6
 	var parcel_depth := (parcel.y - 1) * PITCH + 7.6
 	geometry_origin = Vector3((parcel_width - 7.6) / 2.0, 0, (parcel_depth - 7.6) / 2.0)
-	_pavement(parcel_width, parcel_depth)
+	_pavement(parcel_width, parcel_depth, style.get("ground", Color("485361")))
 	_street_props(h, accent, parcel_width, parcel_depth, scenery)
+	_corner_garden(h, parcel_width, parcel_depth)
+	_kerb_glow(accent, parcel_width, parcel_depth)
+	if not style.is_empty():
+		_district_dressing(style.theme, accent, h, parcel_width, parcel_depth, height)
 	if id == "crime_scene":
 		# Small static voxel drops on the pavement, no imported texture.
 		for drop in [[Vector2(-1.3, 2.8), 0.22], [Vector2(-0.9, 2.45), 0.14], [Vector2(-0.5, 2.2), 0.10], [Vector2(-1.65, 2.6), 0.12], [Vector2(-1.1, 3.05), 0.09]]:
@@ -338,8 +369,22 @@ func make_place(id: String, at: Vector3, scenery: bool = false) -> Node3D:
 				_box(Vector3(x - 0.42 + i * 0.28, terrace_y + 0.26, 1.65), Vector3(0.24, 0.28, 0.45), Color("39554e"))
 		_box(Vector3(2.05, terrace_y, 0.7), Vector3(0.64, 0.15, 0.33), CONCRETE.darkened(0.3))
 	_flush(architecture, "Architecture")
-	_pool(root, Vector3(0, -0.014, 4.9), Vector2(4.8, 2.8), ad % 3)
-	_pool(root, Vector3(4.9, -0.012, 0), Vector2(2.8, 4.8), (ad + 1) % 3)
+	if style.is_empty():
+		_pool(root, Vector3(0, -0.014, 4.9), Vector2(4.8, 2.8), ad % 3)
+		_pool(root, Vector3(4.9, -0.012, 0), Vector2(2.8, 4.8), (ad + 1) % 3)
+	else:
+		# The district's glow: its colour on the wet street and in the air around it.
+		_tinted_pool(root, Vector3(0, -0.014, 4.9), Vector2(5.6, 3.0), accent)
+		_tinted_pool(root, Vector3(4.9, -0.012, 0), Vector2(3.0, 5.6), accent.lerp(color, 0.35))
+		if "--low-fx" not in OS.get_cmdline_user_args():
+			var glow := OmniLight3D.new()
+			glow.position = Vector3(0.5, 2.6, 1.2)
+			glow.light_color = accent
+			glow.light_energy = 0.75
+			glow.omni_range = 9.5
+			glow.omni_attenuation = 1.4
+			glow.shadow_enabled = false
+			root.add_child(glow)
 	if h % 5 == 0 or id == "police":
 		var mount := Node3D.new()
 		mount.position = hero["at"]
@@ -558,6 +603,7 @@ func _courtyard(accent: Color, h: int) -> void:
 	_box(Vector3(2.65, 1.5, 1.85), Vector3(0.15, 0.5, 0.04), accent, "light")
 
 func _plaza(at: Vector3, h: int) -> void:
+	# Empty cells are not all the same square: a garden, a car park or a water basin.
 	var root := Node3D.new()
 	root.name = "PocketGarden"
 	root.position = at
@@ -565,6 +611,16 @@ func _plaza(at: Vector3, h: int) -> void:
 	add_child(root)
 	rng.seed = h + 97
 	_begin()
+	match h % 3:
+		1:
+			_car_park(h)
+			_flush(root, "Garden")
+			return
+		2:
+			_basin(h)
+			_flush(root, "Garden")
+			_pool(root, Vector3(0, 0.18, 0), Vector2(5.0, 5.0), 0)
+			return
 	_box(Vector3(0, 0.08, 0), Vector3(7.6, 0.16, 7.6), Color("515c67"))
 	for x in [-2.5, 2.5]:
 		for z in [-2.4, 0.0, 2.4]:
@@ -582,6 +638,150 @@ func _plaza(at: Vector3, h: int) -> void:
 			_box(Vector3(x, 0.48, z - 0.35), Vector3(1.0, 0.14, 0.34), DARK)
 	_flush(root, "Garden")
 	_pool(root, Vector3(0, 0.18, 0), Vector2(4.0, 4.0), 0)
+
+func _tinted_pool(root: Node3D, at: Vector3, size: Vector2, tint: Color) -> void:
+	var key := tint.to_html(false)
+	if not tinted_pools.has(key):
+		var mat := ShaderMaterial.new()
+		mat.shader = preload("res://neon_pool.gdshader")
+		mat.set_shader_parameter("tint", tint)
+		tinted_pools[key] = mat
+	var mesh := MeshInstance3D.new()
+	var quad := PlaneMesh.new()
+	quad.size = size
+	mesh.mesh = quad
+	mesh.position = at
+	mesh.material_override = tinted_pools[key]
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mesh)
+
+func _nearest_district(at: Vector3) -> String:
+	var best := ""
+	var best_distance := 1e9
+	for id in building_forms:
+		if DISTRICT_STYLES.has(id):
+			var distance: float = building_forms[id].root.position.distance_to(at)
+			if distance < best_distance:
+				best_distance = distance
+				best = id
+	return best
+
+func _corner_garden(h: int, width: float, depth: float) -> void:
+	# One corner of the slab gives way to planting: no two parcels read as the same square.
+	var corner := Vector2(-1.0 if h % 2 == 0 else 1.0, -1.0 if (h / 2) % 2 == 0 else 1.0)
+	var size := Vector2(1.6 + float(h % 3) * 0.35, 1.3 + float((h / 3) % 3) * 0.3)
+	var at := Vector3(corner.x * (width / 2.0 - size.x / 2.0 - 0.25), 0.17, corner.y * (depth / 2.0 - size.y / 2.0 - 0.25))
+	_box(at, Vector3(size.x, 0.05, size.y), GRASS.lightened(float(h % 4) * 0.03))
+	_box(at + Vector3(0, 0.08, 0), Vector3(size.x + 0.08, 0.08, 0.1), CONCRETE.darkened(0.2))
+	_tree(at + Vector3(corner.x * -0.25, 0.01, corner.y * -0.2), h + 5)
+	if h % 3 == 0:
+		_box(at + Vector3(corner.x * 0.35, 0.22, corner.y * 0.3), Vector3(0.8, 0.3, 0.32), DARK)  # a bench
+
+func _kerb_glow(accent: Color, width: float, depth: float) -> void:
+	# A thin light line along the kerb in the district's colour: the city reads by colour.
+	var glow := accent.darkened(0.35)
+	_box(Vector3(0, 0.2, depth / 2.0 + 0.02), Vector3(width * 0.62, 0.035, 0.05), glow, "light")
+	_box(Vector3(width / 2.0 + 0.02, 0.2, 0), Vector3(0.05, 0.035, depth * 0.62), glow, "light")
+
+func _district_dressing(theme: String, accent: Color, h: int, width: float, depth: float, height: float) -> void:
+	match theme:
+		"canal":
+			# Water along the side of the parcel, a railing and a footbridge.
+			var x := -width / 2.0 + 0.7
+			_box(Vector3(x, 0.17, 0), Vector3(1.2, 0.02, depth - 0.3), WATER)
+			for i in 6:
+				_box(Vector3(x + rng.randf_range(-0.4, 0.4), 0.185, -depth / 2.0 + 0.8 + i * (depth - 1.6) / 5.0), Vector3(0.3, 0.012, 0.08), CYAN * 0.45, "light")
+			for i in int(depth / 0.9):
+				_box(Vector3(x + 0.72, 0.5, -depth / 2.0 + 0.45 + i * 0.9), Vector3(0.06, 0.6, 0.06), DARK)
+			_box(Vector3(x + 0.72, 0.78, 0), Vector3(0.05, 0.05, depth - 0.3), CYAN * 0.7, "light")
+			_box(Vector3(x, 0.26, 0.4), Vector3(1.5, 0.08, 0.9), CONCRETE.darkened(0.15))  # footbridge
+		"saint-vital":
+			for z in [-2.3, 2.3]:
+				_box(Vector3(0.4, 0.17, z), Vector3(3.2, 0.03, 0.9), GRASS)
+				for i in 4:
+					_box(Vector3(-0.8 + i * 0.8, 0.33, z), Vector3(0.5, 0.3, 0.5), Color("3a6a4a"))  # hedges
+			_box(Vector3(-width / 2.0 + 0.9, 2.3, depth / 2.0 - 0.3), Vector3(0.9, 0.9, 0.08), Color("162533"))
+			_box(Vector3(-width / 2.0 + 0.9, 2.3, depth / 2.0 - 0.25), Vector3(0.6, 0.14, 0.03), accent, "light")
+			_box(Vector3(-width / 2.0 + 0.9, 2.3, depth / 2.0 - 0.25), Vector3(0.14, 0.6, 0.03), accent, "light")
+		"palace", "traverses":
+			# Marquee bulbs along the kerb and a neon arch over the entrance.
+			for i in int(width / 0.45):
+				var on := (i + h) % 3 != 0
+				_box(Vector3(-width / 2.0 + 0.3 + i * 0.45, 0.24, depth / 2.0 - 0.1), Vector3(0.12, 0.08, 0.12), (AMBER if on else Color("6a4f2a")), "light" if on else "solid")
+			for x in [-1.3, 1.3]:
+				_box(Vector3(x, 1.3, depth / 2.0 - 0.6), Vector3(0.1, 2.6, 0.1), DARK)
+				_box(Vector3(x, 1.3, depth / 2.0 - 0.55), Vector3(0.06, 2.4, 0.06), accent, "light")
+			_box(Vector3(0, 2.65, depth / 2.0 - 0.6), Vector3(2.7, 0.12, 0.1), DARK)
+			_box(Vector3(0, 2.73, depth / 2.0 - 0.55), Vector3(2.5, 0.06, 0.06), accent, "light")
+		"ondes":
+			# Masts and a dish on the roof, a red beacon, cables to the kerb.
+			var top := height + 0.5
+			_box(Vector3(-1.8, top + 1.6, -1.2), Vector3(0.1, 3.2, 0.1), CONCRETE.darkened(0.3))
+			_box(Vector3(-1.8, top + 3.25, -1.2), Vector3(0.16, 0.16, 0.16), Color("ff3c69"), "light")
+			_box(Vector3(1.4, top + 0.6, -0.8), Vector3(1.3, 0.12, 1.3), CONCRETE.darkened(0.2))
+			_box(Vector3(1.4, top + 0.95, -0.8), Vector3(0.9, 0.5, 0.12), Color("8fb4c8"))
+			for i in 3:
+				_box(Vector3(-2.6 + i * 0.4, top + 0.9 + i * 0.3, 1.0), Vector3(0.06, 1.2 + i * 0.5, 0.06), DARK)
+			_box(Vector3(0, 0.3, depth / 2.0 - 0.4), Vector3(width - 1.0, 0.04, 0.06), accent * 0.6, "light")
+		"central":
+			for x in [-2.4, 0.0, 2.4]:
+				_box(Vector3(x, 1.8, depth / 2.0 - 0.5), Vector3(0.08, 3.6, 0.08), CONCRETE.lightened(0.1))
+				_box(Vector3(x + 0.25, 3.2, depth / 2.0 - 0.5), Vector3(0.45, 0.3, 0.02), accent.darkened(0.2), "light")
+			for i in 5:
+				_box(Vector3(-2.0 + i * 1.0, 0.4, depth / 2.0 - 1.4), Vector3(0.18, 0.5, 0.18), CONCRETE.darkened(0.35))
+		"comptoir":
+			# An awning and a terrace with tables under string lights.
+			_box(Vector3(0.8, 1.9, depth / 2.0 - 0.9), Vector3(3.2, 0.08, 1.4), accent.darkened(0.25))
+			for i in 4:
+				_box(Vector3(-0.4 + i * 0.8, 1.86, depth / 2.0 - 0.25), Vector3(0.7, 0.02, 0.16), AMBER if i % 2 == 0 else Color("f0e6d0"))
+			for i in 3:
+				var tx := -0.2 + i * 1.0
+				_box(Vector3(tx, 0.52, depth / 2.0 - 1.0), Vector3(0.42, 0.06, 0.42), Color("d6c7a8"))
+				_box(Vector3(tx, 0.35, depth / 2.0 - 1.0), Vector3(0.08, 0.34, 0.08), DARK)
+				_box(Vector3(tx - 0.3, 0.38, depth / 2.0 - 0.75), Vector3(0.2, 0.35, 0.2), Color("5a3f2e"))
+			for i in 8:
+				_box(Vector3(-1.4 + i * 0.6, 2.35, depth / 2.0 - 0.4), Vector3(0.08, 0.08, 0.08), AMBER, "light")
+		"neon":
+			for i in 4:
+				_box(Vector3(-width / 2.0 + 0.5, 0.9 + i * 0.9, depth / 2.0 - 0.3), Vector3(0.06, 0.6, 0.06), PINK if i % 2 == 0 else CYAN, "light")
+			_box(Vector3(2.2, 2.2, depth / 2.0 - 0.2), Vector3(0.1, 1.6, 0.05), CYAN, "light")
+			_box(Vector3(2.2, 3.1, depth / 2.0 - 0.2), Vector3(0.6, 0.1, 0.05), PINK, "light")
+		"verlaine":
+			# Balconies, a bicycle, laundry: people live here.
+			for i in 3:
+				var bx := -1.6 + i * 1.6
+				_box(Vector3(bx, 2.6 + float(i % 2) * 0.66, depth / 2.0 - 0.2), Vector3(0.9, 0.08, 0.5), CONCRETE.darkened(0.2))
+				_box(Vector3(bx, 2.85 + float(i % 2) * 0.66, depth / 2.0 + 0.02), Vector3(0.9, 0.4, 0.04), DARK)
+				_box(Vector3(bx, 2.7 + float(i % 2) * 0.66, depth / 2.0 - 0.1), Vector3(0.25, 0.14, 0.2), Color("3a6a4a"))
+			_box(Vector3(2.6, 0.45, depth / 2.0 - 1.1), Vector3(0.9, 0.5, 0.12), DARK)  # a bicycle, roughly
+
+func _car_park(h: int) -> void:
+	_box(Vector3(0, 0.06, 0), Vector3(7.6, 0.12, 7.6), Color("2a3340"))
+	for i in 4:
+		_flat_mark(Vector3(-2.7 + i * 1.8, 0.13, 0), Vector2(0.08, 5.6), Color("b7a570"))
+	for i in 3:
+		if (h + i) % 2 == 0:
+			_car(Vector3(-1.8 + i * 1.8, 0.01, -1.6 + float(i % 2) * 2.8), h + i * 3, true)
+	for x in [-3.3, 3.3]:
+		_lamp(Vector3(x, 0.12, -3.0))
+	_box(Vector3(0, 0.7, 3.5), Vector3(1.6, 0.9, 0.12), DARK)
+	_box(Vector3(0, 0.95, 3.57), Vector3(1.3, 0.14, 0.03), CYAN * 0.8, "light")
+
+func _basin(h: int) -> void:
+	_box(Vector3(0, 0.08, 0), Vector3(7.6, 0.16, 7.6), CONCRETE.darkened(0.3))
+	_box(Vector3(0, 0.17, 0), Vector3(5.4, 0.02, 5.4), WATER)
+	for i in 10:
+		_box(Vector3(rng.randf_range(-2.3, 2.3), 0.185, rng.randf_range(-2.3, 2.3)), Vector3(0.35, 0.012, 0.09), CYAN * 0.45, "light")
+	for i in int(5.4 / 0.9):
+		for sign_value in [-1.0, 1.0]:
+			var k := -2.7 + 0.45 + i * 0.9
+			_box(Vector3(k, 0.5, sign_value * 2.8), Vector3(0.06, 0.6, 0.06), DARK)
+			_box(Vector3(sign_value * 2.8, 0.5, k), Vector3(0.06, 0.6, 0.06), DARK)
+	for sign_value in [-1.0, 1.0]:
+		_box(Vector3(0, 0.78, sign_value * 2.8), Vector3(5.6, 0.05, 0.05), CYAN * 0.7, "light")
+		_box(Vector3(sign_value * 2.8, 0.78, 0), Vector3(0.05, 0.05, 5.6), CYAN * 0.7, "light")
+	_tree(Vector3(-3.1, 0.18, 3.1), h)
+	_tree(Vector3(3.1, 0.18, -3.1), h + 2)
 
 func make_house(at: Vector3) -> Node3D:
 	var root := Node3D.new()
@@ -675,8 +875,8 @@ func _rooftop(width: float, depth: float, height: float, h: int, detailed: bool 
 		for i in 2:
 			_box(aerial + Vector3(0, 0.25 + i * 0.3, 0), Vector3(0.4 + i * 0.2, 0.065, 0.065), CONCRETE)
 
-func _pavement(width: float, depth: float = 7.6) -> void:
-	_box(Vector3(0, 0.08, 0), Vector3(width, 0.16, depth), Color("485361"))
+func _pavement(width: float, depth: float = 7.6, ground: Color = Color("485361")) -> void:
+	_box(Vector3(0, 0.08, 0), Vector3(width, 0.16, depth), ground)
 	var columns := int(width / 0.38)
 	for i in columns:
 		var x := -width / 2.0 + (i + 0.5) * width / columns

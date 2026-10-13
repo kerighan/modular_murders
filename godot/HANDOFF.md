@@ -1,5 +1,25 @@
 # Passation : client Godot
 
+## Quartiers à identité, parcelles irrégulières — v35 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v35.apk`, versionCode 35 / `0.35-causal`, même moteur et
+signature que la v34 (sauvegardes conservées). Purement visuel, `city_visuals.gd` :
+
+- `DISTRICT_STYLES` (par lieu de la grille) : `color`, `accent`, `height` (×), `ground`
+  (teinte du trottoir), `theme`. Thèmes : `ondes` (cctv), `central` (police), `palace`
+  (cabaret), `traverses` (alley), `neon` (bar), `comptoir` (restaurant), `saint-vital`
+  (hospital, lab), `canal` (crime_scene, promenade), `verlaine` (victim_street). Les parcelles
+  de décor hors grille empruntent la couleur du quartier le plus proche.
+- `_district_dressing(theme, …)` ajoute l'habillage au sol et en façade (canal + garde-fou +
+  passerelle, haies + croix, guirlande d'ampoules + arche néon, mâts + parabole + balise,
+  mâts de drapeaux + bornes, auvent + terrasse + guirlande, bandes néon, balcons + vélo).
+- `_corner_garden` : un coin planté par parcelle (position et taille par hash) ; `_kerb_glow` :
+  liseré lumineux à la couleur du quartier ; `_tinted_pool` : flaques de néon à l'accent du
+  quartier ; une `OmniLight3D` douce (0,75, portée 9,5) par parcelle stylée, sauf `--low-fx`.
+- Cellules vides : `_plaza` tire jardin / `_car_park` / `_basin` selon le hash.
+- Rien ne bouge côté jeu : positions, entrées (`entrance` meta), voies des voitures, viaduc.
+  Captures `causal-street-life-*-v35-*`.
+
 ## Budget de questions, témoins utiles, fausses pistes d'emprunt — v34 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v34.apk`, versionCode 34 / `0.34-causal`, même signature.

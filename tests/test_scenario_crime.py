@@ -309,6 +309,6 @@ def test_cli_reproducible_across_python_hash_seeds():
 
 
 def test_cli_unsupported_root_is_an_explicit_failure_not_generic_story():
-    result = subprocess.run([sys.executable, "scenario_sampler.py", "--step", "5", "--motive", "predation"],
+    result = subprocess.run([sys.executable, "scenario_sampler.py", "--step", "5", "--motive", "revenge"],
                             cwd=ROOT, capture_output=True, text=True)
     assert result.returncode != 0 and "No implemented kernel" in result.stderr

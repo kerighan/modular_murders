@@ -15,7 +15,7 @@ from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v11"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
+VERSION = "causal-3d-v12"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
 TURN_MINUTES = 30  # one turn of six actions on the case clock
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
@@ -246,12 +246,12 @@ class CausalGame:
         affair.append("Son domicile : " + labels[victim.home] + ".")
         traits_fr = {"coat": "manteau", "hair": "cheveux", "height": "taille"}
         witnesses = {w.id: w.name for w in case.witnesses.witnesses}
-        seen = []
+        seen, prowler = [], []
         for r in s.journal:
             claim = case.claims.get(r["id"]) or {}
             if "description" in claim:
-                source = next((name for wid, name in witnesses.items() if wid in r["id"]), None) or ("caméra · " + labels.get(r["id"].split(":")[1], "") if r["id"].startswith("camera:") else "témoin")
-                seen.append(f"{traits_fr[claim['description']]} {claim['value']} ({source})")
+                source = next((name for wid, name in witnesses.items() if wid in r["id"]), None) or ("caméra · " + labels.get(r["id"].split(":")[1], "") if r["id"].startswith(("camera:", "camera_past:")) else "la gardienne" if r["id"].startswith("prowler:") else "témoin")
+                (prowler if claim.get("prowler") else seen).append(f"{traits_fr[claim['description']]} {claim['value']} ({source})")
         parade = []
         for r in s.journal:
             claim = case.claims.get(r["id"]) or {}
@@ -260,7 +260,7 @@ class CausalGame:
                 for row in claim["sightings"]:
                     who = case.life.people[row["person"]].name if row.get("named", True) else "quelqu'un (" + ", ".join(row.get("traits", {}).values()) + ")"
                     parade.append(f"{who} {at_label(labels[row['place']])} vers {spoken_time(row['minute'])}, selon {speaker}")
-        objects = sorted({s.object_label(obj) for obj in s.found})
+        objects = sorted({s.object_label(obj) for obj in s.carried})  # in hand, not every mug looked at
         facts = [r["text"].split("\n")[0] for r in s.journal if r["kind"] in ("laboratory", "laboratory_contact")]
         remaining = s.remaining()
         named = [row for row in notebook if row["name"] != "?"]
@@ -275,6 +275,8 @@ class CausalGame:
         sections = [("L'affaire", " ".join(affair))]
         if seen:
             sections.append(("Signalement de l'agresseur", " · ".join(seen)))
+        if prowler:
+            sections.append(("Quelqu'un rôdait avant le crime", " · ".join(prowler)))
         if parade:
             sections.append(("Vus sur place hier soir", " · ".join(parade)))
         if objects or facts:
@@ -378,8 +380,8 @@ class CausalGame:
         name = next((w.name for w in self.case.witnesses.witnesses if w.id == actor), None)
         if name is None:
             name = next((k.name for k in self.case.crime.keepers if k.id == actor), None)
-        name = name or ("Médecin légiste" if actor == "staff:medical" else "Technicienne du laboratoire" if actor == "staff:lab" else "Le commissaire" if actor == "staff:police" else "Témoin de la soirée" if operation is Operation.VERIFY else "Personnel du lieu")
-        is_witness = actor.startswith("witness:")
+        name = name or ("Médecin légiste" if actor == "staff:medical" else "Technicienne du laboratoire" if actor == "staff:lab" else "Le commissaire" if actor == "staff:police" else "La gardienne de l'immeuble" if actor.startswith("caretaker:") else "Témoin de la soirée" if operation is Operation.VERIFY else "Personnel du lieu")
+        is_witness = actor.startswith(("witness:", "caretaker:"))
         role = "Témoin" if is_witness else "Personnel"
         placement = "witness" if is_witness else "bar_staff" if actor == "staff:bar" else "restaurant_staff" if actor == "staff:restaurant" else "reception"
         reports = [a for a in self.case.plan.actions if a.actor == actor and a.id.startswith("verify:")
@@ -485,6 +487,8 @@ class CausalGame:
         if self.speaker == "camera" and key[1] in ("camera_window", "camera_hour"):
             artifact = ("camera_window:" if key[1] == "camera_window" else "camera:") + self.camera_place + ":" + str(key[2])
             return int(not any(r["id"] == artifact for r in s.journal))
+        if self.speaker == "camera" and key[1] == "camera_past":
+            return int("camera_past:" + self.camera_place not in s.state.completed)
         if self.speaker not in self.case.plan.population:
             return 0  # Archive navigation/status are not a fresh deposition.
         topic = key[1]
@@ -553,6 +557,9 @@ class CausalGame:
                     options.update({("ask", "camera_window", start): "Hier · " + label + (" · consulté" if f"camera_window:{self.camera_place}:{start}" in done else " (1 PA)")
                                     for start, (_, label) in CAMERA_WINDOWS.items()
                                     if p.ap or include_unavailable or f"camera_window:{self.camera_place}:{start}" in done})
+                    past = "camera_past:" + self.camera_place
+                    if p.ap or include_unavailable or past in s.state.completed:
+                        options[("ask", "camera_past")] = "Jours précédents" + (" · consulté" if past in s.state.completed else " (1 PA)")
                     options[("ask", "camera_district_back")] = "Autre quartier"
                 elif self.camera_block is None:
                     options.update({("ask", "camera_block", h): f"Hier · {h:02d} h – {h + 6:02d} h" for h in range(0, 24, 6)})
@@ -760,6 +767,13 @@ class CausalGame:
                 elif key[1] == "camera_window":
                     text, fresh = s.camera_window(key[2], CAMERA_WINDOWS[key[2]][0], place=self.camera_place)
                     p.ap -= int(fresh)
+                elif key[1] == "camera_past":
+                    past = "camera_past:" + self.camera_place
+                    if past in s.state.completed:
+                        text = next(r["text"] for r in s.journal if r["id"] == past)
+                    else:
+                        text = s._discover(past, self.camera_place)  # the Régie pulls the street's archive
+                        p.ap -= 1
                 else:
                     text = s.camera(key[2], place=self.camera_place)
                     p.ap -= 1

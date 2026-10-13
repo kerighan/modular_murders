@@ -28,8 +28,8 @@ def substitute(world, field, id, **changes):
                                          for obj in getattr(world, field))})
 
 
-def test_only_six_explicitly_supported_premises_not_all_abstract_cases():
-    assert len(k.SUPPORTED_PREMISES) == 6
+def test_only_eight_explicitly_supported_premises_not_all_abstract_cases():
+    assert len(k.SUPPORTED_PREMISES) == 8
     assert set(k.SUPPORTED_PREMISES) < set(allowed_premises())
 
 
@@ -288,7 +288,9 @@ def test_builders_do_not_touch_global_rng_and_sampling_explores_both_mechanisms(
 def test_sampled_domain_coverage_and_role_ids_are_not_fixed():
     builder = k.KernelBuilder(42)
     kernels = [builder.sample() for _ in range(100)]
-    assert {kernel.premise for kernel in kernels} == set(k.SUPPORTED_PREMISES)
+    relational = {p for p in k.SUPPORTED_PREMISES if p.motive is not k.Motive.PREDATION}
+    assert {kernel.premise for kernel in kernels} == relational  # predation rides its own per-seed stream
+    assert {k.KernelBuilder(seed).sample().premise.motive for seed in range(40)} > {k.Motive.PREDATION}
     assert len({kernel.roles.author for kernel in kernels}) > 1
 
 

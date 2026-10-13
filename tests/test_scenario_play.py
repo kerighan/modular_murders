@@ -521,3 +521,35 @@ def test_five_minute_memory_example_becomes_an_inner_hour_interval():
     assert spoken_time(20 * 60 + 45) == "21 h moins le quart"
 
 
+
+
+def _stalker_seed():
+    from scenario_kernel import KernelBuilder
+    from scenario_sampler import Motive
+    return next(s for s in range(80) if KernelBuilder(s).sample().premise.motive is Motive.PREDATION
+                and KernelBuilder(s).sample().world.fixations[0].studied)
+
+
+def test_a_studied_prey_leaves_traces_before_the_crime_and_a_stranger_has_no_link():
+    case = build_case(_stalker_seed())
+    author, victim = case.crime.kernel.roles.author, case.crime.kernel.roles.victim
+    assert not case.life.links(author, victim) and not case.life.knows(author, victim)
+    assert case.life.people[author].workplace is not case.life.people[victim].workplace
+    street = case.crime.streets.neighbors(case.life.people[victim].home)[0][0]
+    caretaker = next(a for a in case.plan.artifacts if a.id == "prowler:" + street)
+    assert "traînait devant l'immeuble" in caretaker.text and author in caretaker.candidates
+    prowler = [k for k, c in case.claims.items() if c.get("prowler")]
+    assert prowler and all(len(next(a.candidates for a in case.plan.artifacts if a.id == k)) >= 2 for k in prowler)
+    bell = [c for c in case.evidence.contacts if c.id.endswith(":stalking")]
+    assert bell and bell[0].person == author and bell[0].object == "doorbell:" + case.life.people[victim].home
+    # a resident's own print is on the same bell: the pattern narrows, it never names
+    assert any(c.object == bell[0].object and c.person == victim for c in case.evidence.contacts)
+
+
+def test_without_a_stalker_the_previous_days_and_the_caretaker_say_nothing():
+    case = build_case(7)
+    assert not case.crime.kernel.world.fixations
+    assert all("rien d'exploitable" in a.text or "hors service" in a.text for a in case.plan.artifacts if a.id.startswith("camera_past:"))
+    assert all(a.candidates == case.plan.population for a in case.plan.artifacts if a.id.startswith(("camera_past:", "prowler:")))
+    assert not [c for c in case.evidence.contacts if c.id.endswith(":stalking")]
+    assert not any(c.get("prowler") for c in case.claims.values())

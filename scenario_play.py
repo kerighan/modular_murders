@@ -14,6 +14,7 @@ from scenario_crime import CrimeBuilder, NodeKind, ToolFate
 from scenario_evidence import build_evidence, crime_window
 from scenario_evening import build_evenings, build_registrations, evening_account, remembered_times, spoken_time
 from scenario_kernel import KernelBuilder
+from scenario_sampler import Motive
 from scenario_life import Link, build_life
 from scenario_means import Method
 from scenario_observations import (Artifact, DiscoveryAction, DiscoveryState,
@@ -239,12 +240,12 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                 home, "diary:" + home, (plan_key,)))
         found = tuple(s.tool for s in crime.tool_states if s.place == home and not s.concealed)
         mugs = tuple("mug:" + p.id for p in residents)
-        objects["search:" + home] = found + mugs
+        objects["search:" + home] = found + mugs + ("doorbell:" + home,)
         names = [next(t.kind.label for t in crime.inventory if t.id == tool)
                  + (" (" + ("du " if labels[tool.split("_")[0]].startswith("Le ") else "de ") + labels[tool.split("_")[0]].removeprefix("Le ") + ")"
                     if tool.startswith(("bar_", "restaurant_")) else "")  # a venue's property, found here
                  for tool in found]
-        add("objects:" + home, "objects", "Objets examinés : " + ", ".join(names + ["tasse personnelle de " + p.name for p in residents]) + ".", "objects:" + home)
+        add("objects:" + home, "objects", "Objets examinés : " + ", ".join(names + ["tasse personnelle de " + p.name for p in residents] + ["sonnette de l'entrée"]) + ".", "objects:" + home)
         actions.append(DiscoveryAction("search:" + home, Operation.SEARCH, "Examiner les objets du logement",
             home, "fixture:room:" + home, ("objects:" + home,)))
     if "collect_object" in {a.id for a in actions}:
@@ -400,6 +401,58 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                 claims[key] = {"description": aspect, "value": getattr(a, aspect).value}
             actions.append(DiscoveryAction(key, Operation.CAMERA, "Consulter la caméra locale",
                 cam.place, "camera:" + cam.place, (key,), ("scene_body",)))
+    # The days before the crime: a studied prey was watched, and that leaves traces the
+    # crime itself does not. Every street camera and the victim's building answer the
+    # question; only a stalker's case has something to show.
+    fixation = next((f for f in crime.kernel.world.fixations if f.studied), None)
+    victim_home = people[victim].home
+    victim_street = crime.streets.neighbors(victim_home)[0][0]
+    watches = [e for e in crime.kernel.world.events if fixation and e.id in fixation.watches]
+    stalker_look = next((a for a in evidence.appearances if fixation and a.person == fixation.author), None)
+    def shared(aspect):
+        value = getattr(stalker_look, aspect.value)
+        return frozenset(a.person for a in evidence.appearances if a.person in population and getattr(a, aspect.value) == value)
+    for cam in evidence.cameras:
+        key = "camera_past:" + cam.place
+        if not cam.online:
+            text, support = "La caméra de ce quartier était hors service ces derniers jours.", population
+        elif fixation and cam.place == victim_street and any(e.place == victim_home for e in watches):
+            lines, support = [], population
+            for e in (e for e in watches if e.place == victim_home):
+                days, minute = -(e.minute // 1440), e.minute % 1440
+                aspect = cam.aspect if cam.aspect is not Aspect.SILHOUETTE and len(shared(cam.aspect)) >= 2 else Aspect.SILHOUETTE
+                seen = {"coat": "Manteau " + stalker_look.coat.value, "height": stalker_look.height.value.capitalize(),
+                        "hair": "Cheveux " + stalker_look.hair.value}.get(aspect.value, "Silhouette seulement")
+                lines.append(f"Il y a {days} jours, {minute // 60:02d}:{minute % 60:02d} — Une personne s'arrête devant {labels[victim_home]}, "
+                             f"reste un long moment sans entrer, puis s'éloigne. {seen}; visage illisible.")
+                if aspect is not Aspect.SILHOUETTE:
+                    support = support & shared(aspect)
+                    claims[key] = {"description": aspect.value, "value": getattr(stalker_look, aspect.value).value, "prowler": True}
+            text = "\n".join(lines)
+        else:
+            text, support = "Les jours précédents : les passages habituels, rien d'exploitable.", population
+        add(key, "footage", text, key, support)
+        actions.append(DiscoveryAction(key, Operation.CAMERA, "Consulter les jours précédents",
+            cam.place, "camera:" + cam.place, (key,), ("scene_body",)))
+    caretaker_key = "prowler:" + victim_street
+    if fixation:
+        options = [a for a in (Aspect.COAT, Aspect.HEIGHT, Aspect.HAIR) if len(shared(a)) >= 2]
+        camera_aspect = next((c.aspect for c in evidence.cameras if c.place == victim_street), None)
+        options = [a for a in options if a is not camera_aspect] or options
+        aspect = random.Random(f"prowler-v1:{seed}").choice(options) if options else None
+        seen = {"coat": f"Son manteau était {stalker_look.coat.value}.", "height": f"La personne était {stalker_look.height.value}.",
+                "hair": f"Ses cheveux étaient {stalker_look.hair.value}."}.get(aspect.value if aspect else "", "Je n'ai pas assez bien vu pour décrire la personne.")
+        days = -(min(e.minute for e in watches) // 1440)
+        text = (f"Ces derniers soirs, quelqu'un traînait devant l'immeuble sans jamais entrer. La première fois, il y a {days} jours. "
+                f"{seen} Je n'ai pas vu son visage, et je n'ai pas pensé à prévenir.")
+        support = shared(aspect) if aspect else population
+        if aspect:
+            claims[caretaker_key] = {"description": aspect.value, "value": getattr(stalker_look, aspect.value).value, "prowler": True}
+    else:
+        text, support = "Rien d'inhabituel ces derniers soirs. Les habitués, les livreurs, c'est tout.", population
+    add(caretaker_key, "testimony", text, caretaker_key, support)
+    actions.append(DiscoveryAction(caretaker_key, Operation.INTERVIEW, "Interroger la gardienne de l'immeuble",
+        victim_street, "caretaker:" + victim_street, (caretaker_key,), ("scene_body",)))
     # A noted loan has a name: the keeper remembers who took the object. The lab will
     # say whether it served, or whether it was only borrowed.
     for index, artifact in enumerate(artifacts):
@@ -453,8 +506,8 @@ def sample_playable(seed=0, max_attempts=200, *, profile=None):
         if not (graph.remaining({a.id for a in case.plan.artifacts}) == {case.crime.kernel.roles.author}
                 and len(case.evidence.presences) >= 2 and context_is_refutable(case)):
             continue
-        if thread_profile(family_lengths(case)) == profile:
-            return case
+        if thread_profile(family_lengths(case)) == profile or case.crime.kernel.premise.motive is Motive.PREDATION:
+            return case  # a stranger's case is its own family: no profile to match
         fallback = fallback or case
     if fallback is not None:
         return fallback
@@ -886,6 +939,8 @@ class PlaySession:
     def object_label(self, obj):
         if obj.startswith("mug:"):
             return "tasse personnelle de " + self.case.life.people[obj.removeprefix("mug:")].name
+        if obj.startswith("doorbell:"):
+            return "sonnette · " + self.locations[obj.removeprefix("doorbell:")]
         label = next(t.kind.label for t in self.case.crime.inventory if t.id == obj)
         if obj.startswith(("bar_", "restaurant_")):  # a venue's property, wherever it was found
             label += " (" + ("du " if self.locations[obj.split("_")[0]].startswith("Le ") else "de ") + self.locations[obj.split("_")[0]].removeprefix("Le ") + ")"

@@ -297,7 +297,7 @@ def test_camera_requires_scene_and_offers_only_four_direct_windows():
     game.play(("camera_menu",))
     assert len(game.options()) == 5
     game.play(("ask", "camera_district", source))
-    assert len(game.options()) == 6
+    assert len(game.options()) == 7  # four windows of yesterday, the previous days, back, close
     assert len([k for k in game.options() if k[:2] == ("ask", "camera_window")]) == 4
     assert not any(k[1:2] in (("camera_hour",), ("camera_block",)) for k in game.options())
     before = game.player.ap, game.session.at
@@ -1331,3 +1331,22 @@ def test_anyone_may_pick_a_lock_through_the_dial_and_the_score_replays():
     travel(skilled, skilled.homes[home])
     skilled.play(("unlock_home", home))
     assert skilled.session.place == home and skilled.history[-1] == ["unlock_home", home]  # the skill skips the dial
+
+
+def test_the_video_archive_offers_the_previous_days_once_for_a_point():
+    game = fresh(7)
+    discover(game, "inspect_scene")
+    travel(game, "cctv")
+    if not game.player.ap:
+        game.play(("end",))
+    game.play(("camera_menu",))
+    place = next(c.place for c in game.case.evidence.cameras if c.online)
+    game.play(("ask", "camera_district", place))
+    assert game.options()[("ask", "camera_past")] == "Jours précédents (1 PA)"
+    before = game.player.ap
+    game.play(("ask", "camera_past"))
+    assert game.player.ap == before - 1 and "camera_past:" + place in game.session.state.completed
+    assert game.options()[("ask", "camera_past")] == "Jours précédents · consulté"
+    text = game.cue["text"]
+    game.play(("ask", "camera_past"))
+    assert game.cue["text"] == text and game.player.ap == before - 1

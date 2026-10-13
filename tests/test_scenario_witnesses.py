@@ -64,6 +64,11 @@ def test_corpus_reproducible_truth_preserved_and_whole_interviews_ambiguous(seed
 @pytest.mark.parametrize("situation", list(SituationKind))
 def test_all_roots_and_situations_have_legal_witness_layer(premise, situation):
     kernel = KernelBuilder(42).build(premise)
+    if kernel.world.fixations and situation is SituationKind.AGREED_MEETING:
+        from scenario_crime import NoFeasibleCrime
+        with pytest.raises(NoFeasibleCrime):  # a stranger never has an appointment with the victim
+            CrimeBuilder("physical-v4:42").build(kernel, situation=situation)
+        return
     base = CrimeBuilder("physical-v4:42").build(kernel, situation=situation)
     layer = WitnessBuilder(42).build(base)
     plan = with_witnesses(project(base), layer)
@@ -266,7 +271,7 @@ def test_cli_stage7_and_legacy_physics_reproducible():
 def test_two_eyewitnesses_of_the_act_hand_out_one_trait_at_most():
     # The scene alone never converges: one witness keeps a trait, the other gives the
     # time and a silhouette. The second trait comes from elsewhere (camera, prints).
-    base = crime(235)
+    base = crime(235, method=Method.BLUNT)  # seed 235 is a stalker's case: pin an outdoor attack
     traits = 0
     for index in range(30):
         layer = WitnessBuilder(f"235:{index}").build(base, focus_assault=2)

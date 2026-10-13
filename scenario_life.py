@@ -386,6 +386,9 @@ def build_life(crime, seed=0):
     world, roles = crime.kernel.world, crime.kernel.roles
     people = {p.id: p for p in world.people}
     bonds, ordinary, messages = [], [], []
+    strangers = {frozenset((f.author, f.target)) for f in world.fixations}  # the chance encounter stays one
+    def stranger_pair(pair):
+        return frozenset(pair) in strangers
     kinds = {RelationKind.ROMANTIC: Link.PARTNERS, RelationKind.FRIENDS: Link.FRIENDS,
              RelationKind.COLLEAGUES: Link.COLLEAGUES, RelationKind.ACQUAINTANCES: Link.ACQUAINTANCES}
     for r in world.relationships:
@@ -398,6 +401,8 @@ def build_life(crime, seed=0):
     for i, a in enumerate(ids):
         for b in ids[i + 1:]:
             pa, pb = people[a], people[b]
+            if stranger_pair({a, b}):
+                continue  # a predator and his prey share nothing, not even a street
             if pa.workplace == pb.workplace and not any(x.kind is Link.COLLEAGUES and set(x.people) == {a, b} for x in bonds):
                 fact = OrdinaryFact(f"workplace:{a}:{b}", (a, b), "shared_workplace",
                                     -fabric.randrange(120, 1500) * 1440, "Même employeur.")
@@ -412,7 +417,7 @@ def build_life(crime, seed=0):
     # A few more direct ties to the victim, independently of criminal role.
     # Most people are not her friends: absence of a relationship is the norm.
     for p in world.people:
-        if p.id == roles.victim or any(set(b.people) == {p.id, roles.victim} for b in bonds):
+        if p.id == roles.victim or any(set(b.people) == {p.id, roles.victim} for b in bonds) or stranger_pair({p.id, roles.victim}):
             continue
         options = [None] * 6 + [Link.FRIENDS, Link.ACQUAINTANCES, Link.SIBLINGS]
         v = people[roles.victim]
@@ -477,6 +482,8 @@ def build_life(crime, seed=0):
     if len(neighbors) >= 2 and rng.random() < .4:
         for p in rng.sample(neighbors, 2):
             at = -5 * 1440 + 23 * 60 + 45
+            if stranger_pair({p.id, v.id}):
+                continue
             fact = OrdinaryFact("noise:" + p.id, (v.id, p.id), "heard_late_music", at,
                 "Musique forte depuis la fenêtre de la victime, entendue dans le logement voisin à 23 h 45.")
             ordinary.append(fact)

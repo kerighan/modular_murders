@@ -117,18 +117,22 @@ class EventKind(LabelledEnum):
     RELATIONSHIP_DISCLOSED = "relationship_disclosed", "La nouvelle relation est annoncée à l'ancien partenaire"
     RECONCILIATION_REFUSED = "reconciliation_refused", "Le partenaire refuse de reprendre l'ancienne relation"
     RIVAL_BLAMED = "rival_blamed", "L'auteur attribue son échec sentimental au rival"
+    TARGET_NOTICED = "target_noticed", "L'auteur remarque la victime, qu'il ne connaît pas"
+    TARGET_WATCHED = "target_watched", "L'auteur observe la victime à distance"
 
 
 class GoalKind(LabelledEnum):
     DENY_AUTONOMY = "deny_autonomy", "empêcher la victime d'exercer son autonomie"
     STOP_DISCLOSURE = "stop_disclosure", "empêcher la divulgation de la faute"
     REMOVE_ROMANTIC_RIVAL = "remove_romantic_rival", "éliminer le rival pour tenter de renouer avec son ancien partenaire"
+    SEEK_THE_ACT = "seek_the_act", "commettre l'acte lui-même, sans rien attendre de la victime"
 
 
 class ExpectedEffect(Enum):
     DEATH_BLOCKS_AUTONOMY = "death_blocks_autonomy"
     DEATH_BLOCKS_DISCLOSURE = "death_blocks_disclosure"
     DEATH_REMOVES_RIVAL = "death_removes_rival"
+    DEATH_IS_THE_ACT = "death_is_the_act"
 
 
 @dataclass(frozen=True)
@@ -238,6 +242,17 @@ class RomanticRivalry:
 
 
 @dataclass(frozen=True)
+class Fixation:
+    """A stranger singled out: noticed once, then watched (studied) or not (chance)."""
+    id: str
+    author: str
+    target: str
+    noticed_by: str
+    watches: tuple[str, ...]
+    studied: bool
+
+
+@dataclass(frozen=True)
 class World:
     people: tuple[Person, ...]
     relationships: tuple[Relationship, ...]
@@ -249,6 +264,7 @@ class World:
     knowledge: tuple[Knowledge, ...] = ()
     disclosures: tuple[Disclosure, ...] = ()
     rivalries: tuple[RomanticRivalry, ...] = ()
+    fixations: tuple[Fixation, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -303,7 +319,10 @@ SUPPORTED_PREMISES = (
     CrimePremise(Motive.CONTROL, Context.ROMANCE, Stake.SEPARATION),
     CrimePremise(Motive.CONTROL, Context.ROMANCE, Stake.REFUSAL),
     CrimePremise(Motive.REMOVE_OBSTACLE, Context.ROMANCE, Stake.ROMANTIC_RIVAL),
+    CrimePremise(Motive.PREDATION, Context.CHANCE_ENCOUNTER, Stake.DOMINATION),
+    CrimePremise(Motive.PREDATION, Context.CHANCE_ENCOUNTER, Stake.VIOLENCE),
 )
+PREDATION_SHARE = 0.22  # of unfiltered draws; drawn on its own stream so older seeds keep their cases
 
 
 def _encode(value):
@@ -370,7 +389,8 @@ def validate_kernel(kernel):
     _require(type(w) is World and type(roles) is Roles and type(intent) is Intent, "Typed world, roles and intent required")
     collections = ((w.people, Person), (w.relationships, Relationship), (w.resources, Resource),
                    (w.events, Event), (w.dependencies, Dependency), (w.demands, Demand),
-                   (w.incidents, Incident), (w.disclosures, Disclosure), (w.rivalries, RomanticRivalry))
+                   (w.incidents, Incident), (w.disclosures, Disclosure), (w.rivalries, RomanticRivalry),
+                   (w.fixations, Fixation))
     for items, cls in collections:
         _require(type(items) is tuple and all(type(item) is cls for item in items), f"Immutable typed {cls.__name__} collection required")
     _require(type(w.knowledge) is tuple and all(type(k) is Knowledge for k in w.knowledge), "Typed knowledge required")
@@ -398,7 +418,7 @@ def validate_kernel(kernel):
         if relation.kind is RelationKind.COLLEAGUES:
             _require(people[relation.people[0]].workplace is people[relation.people[1]].workplace, "Colleagues must share a workplace")
     subjects = (set(resources) | set(deps) | set(demands) | set(incidents) | set(disclosures)
-                | {r.id for r in w.relationships} | {r.id for r in w.rivalries})
+                | {r.id for r in w.relationships} | {r.id for r in w.rivalries} | {f.id for f in w.fixations})
     valid_places = {p.home for p in w.people} | {place.value for place in Workplace}
     for event in w.events:
         _require(type(event.kind) is EventKind and type(event.minute) is int and event.minute < 0, "Events must precede the unresolved crime day")
@@ -531,6 +551,24 @@ def validate_kernel(kernel):
         witness(RequiredFact.ROMANTIC_RIVAL_EXISTS, rivalry.id, rivalry.disclosed_by)
         witness(RequiredFact.AUTHOR_HAS_GOAL, rivalry.refused_by, decision.id)
         witness(RequiredFact.VICTIM_BLOCKS_GOAL, rivalry.current_relationship, reaction.id)
+    elif kernel.premise.motive is Motive.PREDATION:
+        _require(not any(set(r.people) == {a, v} for r in w.relationships)
+                 and people[a].workplace is not people[v].workplace, "A chance encounter has no shared history: no relationship, no shared workplace")
+        candidates = [f for f in w.fixations if f.id == intent.subject and (f.author, f.target) == (a, v)]
+        _require(len(candidates) == 1, "Intent needs the actual fixation on this victim")
+        fixation = candidates[0]
+        noticed = producer(fixation.noticed_by, EventKind.TARGET_NOTICED, a, v, fixation.id)
+        _require(noticed.causes == () and noticed.place == people[v].workplace.value, "The victim is first noticed where she works, out of nowhere")
+        previous = noticed
+        for watch_id in fixation.watches:
+            watch = producer(watch_id, EventKind.TARGET_WATCHED, a, v, fixation.id)
+            _require(watch.causes == (previous.id,) and watch.place in (people[v].home, people[v].workplace.value), "Each watch follows the previous one, at the victim's home or workplace")
+            previous = watch
+        _require(fixation.studied == bool(fixation.watches) and decision.causes == (previous.id,), "A studied prey was watched; the decision follows the last sighting")
+        _require(intent.goal is GoalKind.SEEK_THE_ACT and intent.expected_effect is ExpectedEffect.DEATH_IS_THE_ACT, "Predation seeks the act itself")
+        witness(RequiredFact.NO_SHARED_HISTORY, fixation.id)
+        witness(RequiredFact.ACT_SOUGHT, decision.id, noticed.id)
+        witness(RequiredFact.DOMINATION_DESIRED if kernel.premise.stake is Stake.DOMINATION else RequiredFact.VIOLENCE_DESIRED, fixation.id, noticed.id)
     else:
         relationships = _related(w, a, v, RelationKind.COLLEAGUES)
         candidates = [d for d in w.disclosures if d.id == intent.subject and d.speaker == v and d.recipient == roles.other]
@@ -576,7 +614,14 @@ class KernelBuilder:
         domain = tuple(p for p in allowed_premises(motive=motive, context=context, stake=stake)
                        if p in SUPPORTED_PREMISES)
         if not domain:
-            raise UnsupportedPremise("No implemented kernel for these filters (control, workplace silencing or romantic rivalry)")
+            raise UnsupportedPremise("No implemented kernel for these filters (control, workplace silencing, romantic rivalry or predation)")
+        if motive is None and context is None and stake is None:
+            # Predation on its own stream: the relational draws below stay exactly as they were.
+            chance = random.Random(f"predation-v1:{str(self.seed).split(':retry:')[0]}")  # retries keep the kind of case
+            if chance.random() < PREDATION_SHARE:
+                stake = Stake.DOMINATION if chance.random() < 0.65 else Stake.VIOLENCE
+                return self.build(CrimePremise(Motive.PREDATION, Context.CHANCE_ENCOUNTER, stake))
+            domain = tuple(p for p in domain if p.motive is not Motive.PREDATION)
         rng = self.rng
         m = rng.choice(tuple(m for m in Motive if any(p.motive is m for p in domain))) if motive is None else motive
         c = rng.choice(tuple(c for c in Context if any(p.motive is m and p.context is c for p in domain))) if context is None else context
@@ -682,6 +727,26 @@ class KernelBuilder:
             world = World(tuple(people), tuple(relationships), tuple(resources), events, rivalries=(rivalry,))
             intent = Intent(roles.author, roles.victim, GoalKind.REMOVE_ROMANTIC_RIVAL,
                             ExpectedEffect.DEATH_REMOVES_RIVAL, "decision", rivalry.id)
+        elif premise.motive is Motive.PREDATION:
+            # A stranger: no relationship, another workplace. Domination is a studied prey
+            # (days of watching, which leave traces); violence is a face noticed once.
+            if people[a].workplace is people[v].workplace:
+                place = rng.choice(tuple(w for w in Workplace if w is not people[v].workplace))
+                people[a] = replace(people[a], occupation=rng.choice(JOBS[place]), workplace=place)
+            relationships.append(Relationship("victim_friend", RelationKind.FRIENDS, (roles.victim, roles.other), -400 * DAY))
+            studied = premise.stake is Stake.DOMINATION
+            noticed_at = (-rng.randrange(4, 8) if studied else -rng.randrange(1, 3)) * DAY + 18 * 60
+            events = [Event("noticed", EventKind.TARGET_NOTICED, noticed_at, roles.author, roles.victim, people[v].workplace.value, "fixation")]
+            if studied:
+                for i in range(rng.randrange(2, 4)):
+                    place = people[v].home if i % 2 == 0 else people[v].workplace.value
+                    events.append(Event(f"watch{i}", EventKind.TARGET_WATCHED, noticed_at + (i + 1) * DAY + rng.randrange(-30, 31),
+                                        roles.author, roles.victim, place, "fixation", (events[-1].id,)))
+            events.append(Event("decision", EventKind.INTENT_FORMED, events[-1].minute + 60, roles.author, roles.victim,
+                                people[a].home, "fixation", (events[-1].id,)))
+            fixation = Fixation("fixation", roles.author, roles.victim, "noticed", tuple(e.id for e in events if e.kind is EventKind.TARGET_WATCHED), studied)
+            world = World(tuple(people), tuple(relationships), tuple(resources), tuple(events), fixations=(fixation,))
+            intent = Intent(roles.author, roles.victim, GoalKind.SEEK_THE_ACT, ExpectedEffect.DEATH_IS_THE_ACT, "decision", "fixation")
         else:
             place = rng.choice(tuple(Workplace))
             people[a] = replace(people[a], occupation=JOBS[place][1], workplace=place)
@@ -750,6 +815,9 @@ def describe(kernel):
         lines.extend((f"Triangle : {partner.name} a quitté {a.name} ; sa relation actuelle est avec {v.name}.",
                       f"{partner.name} a annoncé cette relation et refusé de reprendre le couple avec {a.name}.",
                       f"{a.name} connaît {v.name} et lui attribue ce refus. Rien ne garantit que {partner.name} reviendrait."))
+    elif p.motive is Motive.PREDATION:
+        fixation = kernel.world.fixations[0]
+        lines.append(f"Aucun lien : {a.name} a remarqué {v.name} {'et l’a observée plusieurs jours' if fixation.studied else 'une seule fois'} ({len(fixation.watches)} repérages).")
     else:
         incident = kernel.world.incidents[0]
         disclosure = kernel.world.disclosures[0]

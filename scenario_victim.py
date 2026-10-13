@@ -40,7 +40,9 @@ def allowed_goals(premise):
     """CLI upper bound for the five authored roots; actual facts are checked later."""
     if premise not in SUPPORTED_PREMISES:
         return ()
-    goals = (VictimGoal.RETURN_HOME, VictimGoal.MEET_PERSON, VictimGoal.MEET_AUTHOR, VictimGoal.GO_OUT)
+    goals = (VictimGoal.RETURN_HOME, VictimGoal.MEET_PERSON, VictimGoal.GO_OUT)
+    if premise.motive is not Motive.PREDATION:
+        goals += (VictimGoal.MEET_AUTHOR,)  # a stranger is never an appointment
     if (premise.motive is Motive.SILENCE and premise.context is Context.WORK
             and premise.stake in (Stake.FRAUD, Stake.PAST_CRIME)):
         goals += (VictimGoal.REPORT_INCIDENT,)

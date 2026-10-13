@@ -85,6 +85,11 @@ def test_current_partner_can_belong_to_a_triangle_without_any_killer_connection(
 @pytest.mark.parametrize("fate", list(c.ToolFate))
 def test_agreed_meetings_start_at_home_and_do_not_require_workplace_surveillance(premise, method, fate):
     world, builder, streets, inventory = setup(premise)
+    if world.world.fixations:
+        with pytest.raises(c.NoFeasibleCrime):  # a stranger never has an appointment with the victim
+            builder.execute(world, streets, inventory, situation=S.AGREED_MEETING, method=method, fate=fate,
+                            acquisition=c.AcquisitionKind.OWNED, mundane=False)
+        return
     crime = builder.execute(world, streets, inventory, situation=S.AGREED_MEETING,
                            method=method, fate=fate, acquisition=c.AcquisitionKind.OWNED, mundane=False)
     x, plan = crime.execution, crime.victim_plan

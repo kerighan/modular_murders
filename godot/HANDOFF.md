@@ -1,5 +1,46 @@
 # Passation : client Godot
 
+## Prédation : l'inconnu qui a étudié sa proie — v46 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v46.apk`, versionCode 46 / `0.46-causal`, moteur
+`causal-3d-v12` (sauvegardes v45 archivées, affaire neuve). Première étape du tueur sans lien,
+voulu dès le départ (catalogue `scenario_sampler.py`) et jamais implémenté.
+
+- **Noyau** (`scenario_kernel.py`) : prémisses `PREDATION × CHANCE_ENCOUNTER` avec enjeu
+  `DOMINATION` (proie étudiée) ou `VIOLENCE` (visage remarqué une fois). `Fixation`
+  (`world.fixations`) : `noticed_by` (événement `TARGET_NOTICED` au lieu de travail de la
+  victime), `watches` (`TARGET_WATCHED` à son domicile ou à son travail, J-3…J-1), `studied`.
+  Intention `SEEK_THE_ACT` / `DEATH_IS_THE_ACT`. Validation : aucune relation auteur-victime,
+  lieux de travail différents, chaîne remarque → repérages → décision. Tirage sur un flux séparé
+  `predation-v1:seed` (22 % des seeds, 65 % étudiées ; les autres seeds gardent leurs tirages ;
+  les `:retry:` restent du même genre). `SUPPORTED_PREMISES` passe à 8.
+- **Crime** : un suiveur connaît la sortie du travail par ses repérages, plus par confidence
+  (`workplace_disclosure` None quand il y a une fixation). Pas de rendez-vous possible avec un
+  inconnu (`allowed_goals` sans `MEET_AUTHOR`).
+- **Tissu social** (`scenario_life.py`) : la paire auteur-victime ne reçoit ni voisinage, ni
+  lien direct, ni musique tardive. L'auteur répond « Je ne connaissais pas la victime » : c'est
+  vrai, et le Réseau ne le relie à rien.
+- **Traces d'un repérage** (`scenario_play.build_case`, cas étudié seulement) : la caméra de la
+  rue de la victime a des images des jours précédents (« Il y a 4 jours, 18:26 — Une personne
+  s'arrête devant Logement d'Ada, reste un long moment sans entrer… », trait de la caméra si
+  partagé par ≥ 2 personnes) ; la gardienne de l'immeuble (`caretaker:<rue>`, action
+  `prowler:<rue>`, halo témoin dans la rue de la victime) décrit le rôdeur avec un autre trait ;
+  la sonnette de l'entrée (`doorbell:<logement>`, dans tous les logements, empreintes des
+  résidents) porte en plus l'empreinte partielle du rôdeur (`contact:…:stalking`, validé par un
+  repérage réel au domicile). Hors repérage, caméra et gardienne répondent honnêtement « rien
+  d'exploitable » : la présence de la question n'est jamais un indice.
+- **Régie** : option « Jours précédents (1 PA) » par quartier (`("ask", "camera_past")`,
+  `_discover` depuis la Régie), consultée une fois puis gratuite.
+- **Résumé** : section « Quelqu'un rôdait avant le crime » (claims `prowler`), objets limités à
+  ceux en main.
+- Tests : `test_a_studied_prey_leaves_traces_before_the_crime_and_a_stranger_has_no_link`,
+  `test_without_a_stalker_the_previous_days_and_the_caretaker_say_nothing`,
+  `test_the_video_archive_offers_the_previous_days_once_for_a_point` ; les tests paramétrés par
+  prémisse sautent `AGREED_MEETING` pour une prédation.
+- Reste à faire (prévu) : affaires antérieures et casiers au commissariat avec innocents
+  casiers ; fil « repérage » dans `scenario_threads` et l'audit ; dossier coupable + méthode +
+  mobile (« aucun lien » comme réponse).
+
 ## « Contondant », avec la glose — v45 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v45.apk`, versionCode 45 / `0.45-causal`, même moteur

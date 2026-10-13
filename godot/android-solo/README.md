@@ -1,7 +1,11 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.45-causal** : `../builds/nexus-city-solo-debug-v45.apk`, moteur `causal-3d-v11`
-(sauvegardes conservées). Le légiste explique « objet contondant ».
+Version **0.46-causal** : `../builds/nexus-city-solo-debug-v46.apk`, moteur `causal-3d-v12`
+(sauvegardes v45 archivées, nouvelle affaire). Une affaire sur cinq est l'œuvre d'un inconnu :
+aucun lien avec la victime, et s'il l'a étudiée, la caméra de sa rue sur les jours précédents,
+la gardienne de l'immeuble et la sonnette de l'entrée en gardent la trace.
+
+Version 0.45 : moteur `causal-3d-v11` (sauvegardes conservées). Le légiste explique « objet contondant ».
 
 Version 0.44 : moteur `causal-3d-v11` (sauvegardes conservées). L'onglet Éléments s'ouvre sur le résumé de l'affaire (victime,
 lieu, heure du crime, signalement recueilli, preuves, suspects, pistes) ; l'approche d'un

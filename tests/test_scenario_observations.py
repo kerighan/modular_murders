@@ -42,6 +42,8 @@ def test_projection_is_reachable_ambiguous_and_never_changes_truth(seed):
 @pytest.mark.parametrize("situation", list(SituationKind))
 def test_all_causal_roots_and_situations_have_obtainable_content(premise, situation):
     kernel = KernelBuilder(42).build(premise)
+    if kernel.world.fixations and situation is SituationKind.AGREED_MEETING:
+        pytest.skip("a stranger never has an appointment with the victim")
     crime = CrimeBuilder("physical-v4:42").build(kernel, situation=situation)
     plan = project(crime)
     assert walkthrough(plan)["audit"]["artifacts_acquired"] == len(plan.artifacts)

@@ -145,6 +145,13 @@ class Evidence:
             if contact.object.startswith("mug:"):
                 if contact.object != "mug:" + p.id or contact.place != p.home or contact.minute >= 0:
                     raise ValueError("A real prior household contact")
+            elif contact.object.startswith("doorbell:"):
+                watched = any(e.id in f.watches and e.place == contact.place == contact.object.removeprefix("doorbell:")
+                              and e.minute == contact.minute and f.author == contact.person
+                              for f in c.kernel.world.fixations for e in c.kernel.world.events)
+                if not (contact.object == "doorbell:" + contact.place and contact.minute < 0
+                        and (p.home == contact.place or watched)):
+                    raise ValueError("A doorbell print belongs to a resident or to an actual stalking visit")
             elif (contact.person, contact.object, contact.place, contact.minute) not in known_contacts:
                 raise ValueError("A print requires an actual handling event")
         from scenario_means import Method
@@ -221,6 +228,10 @@ class Evidence:
         return clips, "\n".join(texts)
 
 
+def people_by_id(people):
+    return {p.id: p for p in people}
+
+
 def crime_window(crime):
     """Authored GAME estimate, not a medical model. Includes administration,
     not only death, for delayed fictional poison.
@@ -284,6 +295,12 @@ def build_evidence(crime, seed=0, appearances=None, *, required_alibis=(), parti
         ridges = {p.id: again.choice(RIDGES) for p in people}
     contacts = [Contact("contact:mug:" + p.id, p.id, "mug:" + p.id, p.home,
                         -1440 + 8 * 60, ridges[p.id]) for p in people]
+    # Every building has a doorbell its residents touch; a stalker who rang once left his own.
+    contacts += [Contact("contact:doorbell:" + p.id, p.id, "doorbell:" + p.home, p.home, -1440 + 8 * 60, ridges[p.id]) for p in people]
+    for f in crime.kernel.world.fixations:
+        rung = [e for e in crime.kernel.world.events if e.id in f.watches and e.place == people_by_id(people)[f.target].home]
+        if rung:
+            contacts.append(Contact("contact:doorbell:" + f.author + ":stalking", f.author, "doorbell:" + rung[0].place, rung[0].place, rung[0].minute, ridges[f.author]))
     for t in crime.transfers:
         if t.kind.value in ("acquisition", "innocent_loan"):
             contacts.append(Contact("contact:" + t.id, t.actor, t.tool, t.origin, t.minute, ridges[t.actor]))

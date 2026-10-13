@@ -437,13 +437,17 @@ def validate_crime(crime):
           "actual victim walk is a prefix of the planned journey")
     if x.situation is SituationKind.TRACKING:
         disclosure = crime.workplace_disclosure
-        check(type(disclosure) is WorkplaceDisclosure, "typed workplace disclosure")
-        relationship = next((r for r in k.world.relationships if r.id == disclosure.relationship), None)
-        check(relationship is not None and set(relationship.people) == {a.id, v.id}
-              and disclosure.speaker == v.id and disclosure.recipient == a.id
-              and disclosure.workplace is v.workplace and type(disclosure.minute) is int
-              and relationship.since < disclosure.minute < intent.minute,
-              "author knows workplace through an actual prior disclosure, not omniscience")
+        if k.world.fixations:
+            # A stranger knows the exit because he noticed her there: the fixation, not a confidence.
+            check(disclosure is None and k.world.fixations[0].target == v.id, "a stalker learns the workplace by watching, never by confidence")
+        else:
+            check(type(disclosure) is WorkplaceDisclosure, "typed workplace disclosure")
+            relationship = next((r for r in k.world.relationships if r.id == disclosure.relationship), None)
+            check(relationship is not None and set(relationship.people) == {a.id, v.id}
+                  and disclosure.speaker == v.id and disclosure.recipient == a.id
+                  and disclosure.workplace is v.workplace and type(disclosure.minute) is int
+                  and relationship.since < disclosure.minute < intent.minute,
+                  "author knows workplace through an actual prior disclosure, not omniscience")
         check(plan.origin == v.workplace.value and x.approach.nodes[-1] == journey.nodes[1]
               and x.approach.times[-1] <= x.observation_at and x.observation_at == journey.times[1],
               "author observes victim at actual outdoor exit")
@@ -739,7 +743,7 @@ class CrimeBuilder:
                               escape, selected_fate, source, preparation, permission, hidden_at,
                               selected_situation, exposure)
         disclosure = None
-        if selected_situation is SituationKind.TRACKING:
+        if selected_situation is SituationKind.TRACKING and not kernel.world.fixations:
             relationship = next(r for r in kernel.world.relationships if set(r.people) == {a.id, v.id})
             disclosure = WorkplaceDisclosure(v.id, a.id, v.workplace, relationship.since + 1, relationship.id)
         ordinary = self._ordinary_loan(kernel, streets, inventory, tool.id, mundane)

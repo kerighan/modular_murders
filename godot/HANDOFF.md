@@ -1,5 +1,21 @@
 # Passation : client Godot
 
+## On ne nomme que ceux qu'on connaît — v42 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v42.apk`, versionCode 42 / `0.42-causal`, même moteur
+`causal-3d-v10` et même signature (sauvegardes conservées, texte « Témoin » recalculé).
+Règle de Maixent : un suspect ne peut citer Lina que s'il la connaît.
+
+- `scenario_play.py` : chaque aperçu porte `named = life.knows(moi, autre)` (lien social ou
+  message lu). Connu → prénom, comme en v40. Inconnu → un ou deux traits sur trois tirés au sort
+  (`manteau clair`, `cheveux blonds`, `plutôt grande`) : « Une personne que je n'avais jamais
+  vue, à table au Comptoir vers 18 h moins le quart. Manteau clair, plutôt grande. » ou « Il y
+  avait quelqu'un que je ne connais pas au Néon Bleu vers 20 h, devant un verre : cheveux blonds,
+  plutôt petite. » Un seul inconnu par réponse ; le duo nommé n'existe que si les deux sont
+  connus. La claim `sightings` garde `person` (privé), `named`, `traits`.
+- Audit 60 seeds : 197 aperçus nommés, 196 décrits. Le signalement d'un inconnu se recoupe avec
+  les portraits du carnet : la question « Témoin » devient une petite déduction.
+
 ## Le commissariat a sa pièce — v41 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v41.apk`, versionCode 41 / `0.41-causal`, même moteur

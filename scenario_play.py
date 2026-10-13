@@ -95,11 +95,16 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         def one(row):
             name, when = people[row["person"]].name, spoken_time(row["minute"])
             where, what = at_place_label(labels[row["place"]]), rng.choice(doing.get(row["place"], ("de passage",)))
+            if not row["named"]:
+                # A face without a name: one or two traits, the detective matches them to a profile.
+                traits = ", ".join(row["traits"].values())
+                return rng.choice((f"Il y avait quelqu'un que je ne connais pas {where} vers {when}, {what} : {traits}.",
+                                   f"Une personne que je n'avais jamais vue, {what} {where} vers {when}. {traits[0].upper() + traits[1:]}."))
             of = ("d'" if name[0] in "AEIOUÉÈÊÎÔÛH" else "de ") + name
             return rng.choice((f"{name} était {where} vers {when}, {what}. On s'est salués, pas plus.",
                                f"Je me souviens {of}, {what} {where}, vers {when}.",
                                f"J'ai croisé {name} {where} vers {when}, {what}. On n'a pas vraiment parlé."))
-        if len(rows) == 2 and rows[0]["place"] == rows[1]["place"]:
+        if len(rows) == 2 and rows[0]["place"] == rows[1]["place"] and all(r["named"] for r in rows):
             a, b = (people[r["person"]].name for r in rows)
             when, where = spoken_time(min(r["minute"] for r in rows)), at_place_label(labels[rows[0]["place"]])
             what = rng.choice(doing.get(rows[0]["place"], ("de passage",)))
@@ -163,6 +168,14 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
             # A memory, not a roster: one face, sometimes two, with what they were doing.
             memory = random.Random(f"sightings-v2:{seed}:{p.id}")
             sightings = memory.sample(sightings, min(len(sightings), memory.choice((1, 1, 2))))
+            for row in sightings:
+                # Only an acquaintance gets a name; a stranger is a coat and a head of hair.
+                row["named"] = life.knows(p.id, row["person"])
+                seen_look = next(a for a in evidence.appearances if a.person == row["person"])
+                traits = {"coat": "manteau " + seen_look.coat.value, "hair": "cheveux " + seen_look.hair.value, "height": seen_look.height.value}
+                row["traits"] = {k: traits[k] for k in sorted(memory.sample(sorted(traits), memory.choice((1, 2))))}
+            if len(sightings) == 2 and not any(r["named"] for r in sightings):
+                sightings = sightings[:1]  # one unknown face per memory, not a parade
             observation_text = (observation_text + "\n" if borrowing else "") + sighting_text(sightings, memory)
         observation_reveals = old.reveals if old else ()
         if borrowing or sightings or not observation_reveals:

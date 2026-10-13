@@ -15,7 +15,7 @@ from scenario_evening import spoken_time
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v9"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
+VERSION = "causal-3d-v10"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
 TURN_MINUTES = 30  # one turn of six actions on the case clock
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
@@ -78,6 +78,7 @@ class CausalGame:
         self.note_turns = []
         self.questions_paid = set()
         self.slots = 0  # fresh questions left in the open conversation
+        self.summons = {}  # pid -> the turn their employer's call puts them at work
         self.approaching = False  # the detective sizes the suspect up before deciding to talk
         self.unlocked_homes = set()
         self.routines = next_day_routines(self.case)
@@ -113,7 +114,28 @@ class CausalGame:
 
     def update_positions(self):
         self.position_at = self.session.at
-        self.session.person_places = {r.person: r.place_at(self.session.at) for r in self.routines}
+        self.session.person_places = {r.person: self.expected(r.person, self.session.at, self.tick)[0] for r in self.routines}
+
+    def expected(self, pid, at, tick):
+        """Where this person is at that minute of that turn, and what they are doing."""
+        if self.summons.get(pid) == tick:
+            return self.case.life.people[pid].workplace.value, "appelé au travail"
+        r = next(r for r in self.routines if r.person == pid)
+        return r.place_at(at), r.activity_at(at)
+
+    def workplace_known(self, pid):
+        """You may only have someone called in once you established where they work: their own
+        answer, the police record, or the venue's roster."""
+        s = self.session
+        ids = {r["id"] for r in s.journal}
+        return pid in s.named_people() and ("police_record:" + pid in dict(s.state.known) or "context:" + pid + ":work" in ids
+                                            or "venue_staff:" + self.case.life.people[pid].workplace.value in ids)
+
+    def summonable(self):
+        """Suspects the speaker's venue employs, established as such, not here already, not called yet."""
+        venue = next((k.place for k in self.case.crime.keepers if k.id == self.speaker), None)
+        return [pid for pid in sorted(self.case.plan.population) if venue and self.case.life.people[pid].workplace.value == venue
+                and self.workplace_known(pid) and self.session.person_places[pid] != venue and self.summons.get(pid) != self.tick + 1]
 
     def occupants(self, home):
         return sorted(pid for pid, place in self.session.person_places.items() if place == home)
@@ -282,7 +304,7 @@ class CausalGame:
         known = pid in self.session.named_people()
         appearance = next(a for a in self.case.evidence.appearances if a.person == pid)
         return {"id": int(pid[1:]), "name": p.name if known else None,
-                "activity": next(r.activity_at(getattr(self, "position_at", self.session.at)) for r in self.routines if r.person == pid),
+                "activity": self.expected(pid, getattr(self, "position_at", self.session.at), self.tick)[1],
                 "look": "cheveux " + appearance.hair.value + " · " + appearance.coat.value + " · " + appearance.height.value,
                 "appearance": {"coat": appearance.coat.value, "height": appearance.height.value, "hair": appearance.hair.value}}
 
@@ -378,7 +400,8 @@ class CausalGame:
                     "question": question, "notes": [], "active": active, "remaining_pa": self.player.ap,
                     "context": "Images · " + self.session.locations[self.camera_place] + " · hier" if self.speaker == "camera" and self.camera_place else "Régie vidéo · hier" if self.speaker == "camera" else "Conversation" if active else "Observation consignée",
                     "terminal": self.speaker == "camera",
-                    "remaining": self.slots if active else 0, "slots_total": QUESTIONS_PER_PA,
+                    "remaining": self.slots if active else 0,
+                    "slots_total": QUESTIONS_PER_PA if self.speaker in self.case.plan.population else 0,  # staff have no budget
                     "person": person or {"id": -1, "name": name, "look": "", "detective": True}}
         if person and person.get("role"):
             self.cue["context"] = person["role"] + " · Source d'information"
@@ -443,6 +466,9 @@ class CausalGame:
                         pid = row["id"].split(":", 1)[1]
                         question = "Casier · " + (self.case.life.people[pid].name if pid in s.named_people() else "Fiche n°" + str(int(pid[1:]) + 1))
                     options[("ask", "service_action", row["id"])] = question + " (1 PA)"
+                if p.ap > 0:
+                    # An employer can call an employee in: next turn they are here, and their home is empty.
+                    options.update({("summon", int(pid[1:])): "Faire appeler " + self.case.life.people[pid].name + " (1 PA)" for pid in self.summonable()})
                 # Only actual analysis services have a useful status to recall.
                 # Put that recall after the concrete questions, never ahead of
                 # the first question asked to a barman/server/witness.
@@ -589,6 +615,10 @@ class CausalGame:
             if s.place in self.homes and self.occupants(s.place):
                 s.go(self.homes[s.place])
                 text = "Vous regagnez le couloir avant le retour des habitants."
+            called = [self.case.life.people[pid].name + " répond à l'appel du travail et passe le tour " + at_label(s.locations[self.case.life.people[pid].workplace.value])
+                      for pid in sorted(self.summons) if self.summons[pid] == self.tick]
+            if called:
+                text = (text + "\n" if text else "") + "📰 " + " · ".join(called) + " : domicile vide ce tour-ci."
         elif action == "stop":
             self.speaker, self.camera_block, self.camera_place = None, None, None
             self.slots, self.approaching = 0, False  # the conversation is over; next time costs a point again
@@ -621,6 +651,13 @@ class CausalGame:
             self.open_questions("p" + str(key[1]))
         elif action == "talk":
             self.start_talking()
+        elif action == "summon":
+            pid = "p" + str(key[1])
+            p.ap -= 1
+            self.summons[pid] = self.tick + 1
+            row = next(a for a in self.case.plan.actions if a.actor == self.speaker)
+            self._cue("Je l'appelle. " + self.case.life.people[pid].name + " sera ici au prochain tour, je m'arrange pour que ça dure un moment.",
+                      person=self.source_person(self.speaker, row.operation), active=True, question=options[key])
         elif action == "service_menu":
             self.speaker = key[1]
             row = next(a for a in self.staff_rows() if a.actor == self.speaker)
@@ -901,8 +938,7 @@ class CausalGame:
         notebook = []
         named = s.named_people()
         deductions = s.deductions()
-        next_positions = {r.person: {"place": r.place_at(s.at + 15),
-                          "activity": r.activity_at(s.at + 15)} for r in self.routines}
+        next_positions = {r.person: dict(zip(("place", "activity"), self.expected(r.person, s.at + TURN_MINUTES, self.tick + 1))) for r in self.routines}
         for pid in sorted(self.case.plan.population):
             p = self.case.life.people[pid]
             profile = self.person(pid)
@@ -914,7 +950,7 @@ class CausalGame:
                              "traits": ({"Cheveux": profile["appearance"]["hair"], "Manteau": profile["appearance"]["coat"], "Taille": profile["appearance"]["height"]} | ({"Métier": p.occupation.label} if "police_record:" + pid in known or any(r["id"] == "context:" + pid + ":work" for r in s.journal) else {})) if profile_known else {},
                              "appearance": profile["appearance"] if profile_known else {},
                              "whereabouts": {"current": {"place": s.person_places[pid], "label": labels[s.person_places[pid]],
-                                             "activity": next(r.activity_at(getattr(self, "position_at", s.at)) for r in self.routines if r.person == pid)},
+                                             "activity": self.expected(pid, getattr(self, "position_at", s.at), self.tick)[1]},
                                              "next": {**next_positions[pid], "label": labels[next_positions[pid]["place"]]}} if identified else None,
                              "deductions": deductions[pid] if identified else [],
                              "life": None, "relationship": {"claim": self.case.life.answer(pid), "reported": None, "witnesses": [], "contradiction": False} if any(r["id"] == "context:" + pid + ":relation" for r in s.journal) else None,

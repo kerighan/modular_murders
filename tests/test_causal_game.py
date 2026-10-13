@@ -1270,6 +1270,35 @@ def test_a_suspect_is_described_first_and_talking_is_the_paid_step():
     assert game.options() == {("stop",): "Quitter"}  # no point left: a look, no talk, no reread
 
 
+def test_an_employer_calls_a_suspect_in_once_you_know_where_they_work():
+    game = fresh(0, ("search", "rapport"))
+    pid = next(p for p in sorted(game.case.plan.population) if game.case.life.people[p].workplace.value in ("bar", "restaurant"))
+    person = game.case.life.people[pid]
+    venue = person.workplace.value
+    travel(game, venue)
+    if not game.player.ap:
+        game.play(("end",))
+    game.play(("service_menu", "staff:" + venue))
+    assert not [k for k in game.options() if k[0] == "summon"]  # nothing established yet
+    game.play(("ask", "service_action", "venue_staff:" + venue))  # the roster names the staff
+    assert game.workplace_known(pid) and game.options()[("summon", int(pid[1:]))] == "Faire appeler " + person.name + " (1 PA)"
+    if not game.player.ap:
+        game.play(("stop",)), game.play(("end",)), game.play(("service_menu", "staff:" + venue))
+    ap = game.player.ap
+    game.play(("summon", int(pid[1:])))
+    assert game.player.ap == ap - 1 and person.name in game.cue["text"]
+    assert ("summon", int(pid[1:])) not in game.options()  # once per turn
+    row = next(r for r in game.view(game.player)["notebook"] if r["id"] == int(pid[1:]))
+    assert row["whereabouts"]["next"] == {"place": venue, "activity": "appelé au travail", "label": game.session.locations[venue]}
+    game.play(("stop",))
+    lines = game.play(("end",))
+    assert any(line.startswith("📰") and person.name in line for line in lines)
+    assert game.session.person_places[pid] == venue and pid not in game.occupants(person.home)
+    assert ("interrogate", int(pid[1:])) in game.options()
+    restored = CausalGame.restore(game.seed, "Ada", game.snapshot(), True)
+    assert restored.summons == game.summons and restored.view(restored.player) == game.view(game.player)
+
+
 def test_anyone_may_pick_a_lock_through_the_dial_and_the_score_replays():
     scores = iter([0.2, 0.9])
     game = CausalGame(0, ["Ada"], challenge=lambda kind, difficulty: next(scores))

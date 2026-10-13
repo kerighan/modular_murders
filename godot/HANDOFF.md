@@ -1,5 +1,34 @@
 # Passation : client Godot
 
+## Faire appeler un employé — v37 (13 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v37.apk`, versionCode 37 / `0.37-causal`, moteur
+`causal-3d-v10` (sauvegardes v36 archivées au lancement, affaire neuve). Idée de Maixent :
+déloger un suspect de chez lui pour aller fouiller son appartement.
+
+- `causal_game.py` : `summons` (pid → tour), `expected(pid, at, tick)` donne lieu + activité
+  (« appelé au travail » le tour de la convocation, sinon la routine) et alimente
+  `update_positions`, `person()`, les `whereabouts` (le « prochain tour » regarde désormais
+  `s.at + TURN_MINUTES`). `workplace_known(pid)` : la personne est nommée ET (fiche police
+  connue, ou réponse « Métier » au journal, ou `venue_staff:<lieu>` au journal).
+  `summonable()` : employés du lieu du gérant (`crime.keepers`), établis, pas déjà sur place,
+  pas déjà convoqués pour le tour suivant.
+- Menu du barman / serveur : `("summon", id)` « Faire appeler Ada (1 PA) » (si PA > 0).
+  `play` : −1 PA, `summons[pid] = tick + 1`, réponse du gérant. À `end` : `📰 Ada répond à
+  l'appel du travail et passe le tour au Néon Bleu : domicile vide ce tour-ci.` (toast
+  « Information ») ; la personne est au lieu pour ce tour (`interrogate` possible), son
+  domicile se fouille/crochète comme un logement vide.
+- Client `rpg_dialogue.gd` : les clés `summon` passent le filtre de conversation et sont
+  regroupées sous « Faire appeler un employé… » (`_show_people_questions("summon")`).
+- Test : `test_an_employer_calls_a_suspect_in_once_you_know_where_they_work` ; smoke natif
+  `tests/summon_smoke.gd --seed=0` (captures `guidance-summon-*`).
+- Au passage : `slots_total = 0` pour le personnel (la boîte du barman affichait
+  « Questions 3/3 » sans budget).
+- Smokes liés à une seed précise toujours périmés (pas des régressions) :
+  `causal_access_smoke` après le seuil (second résident seed 7), `causal_contacts_smoke`
+  (id 0 = victime sur seed 7), `causal_life_smoke`, `causal_services_smoke` (seed 0 n'est
+  plus un empoisonnement), `lounge_smoke`/`rpg_smoke` (moteur legacy).
+
 ## Portes, questions lisibles, ⚡, couleurs des noms — v36 (13 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v36.apk`, versionCode 36 / `0.36-causal`, même moteur et

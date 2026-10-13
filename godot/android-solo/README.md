@@ -1,5 +1,11 @@
 # Nexus City — APK solo hors ligne
 
+Version **0.37-causal** : `../builds/nexus-city-solo-debug-v37.apk`, moteur `causal-3d-v10`
+(les sauvegardes v36 sont archivées, nouvelle affaire). Au Néon Bleu et au Comptoir, « Faire
+appeler un employé… » : le patron rappelle un suspect dont vous avez établi qu'il travaille là
+(sa réponse « Métier », sa fiche police ou « Qui travaille ici ? ») ; au tour suivant il est sur
+place et son domicile est vide (1 PA).
+
 Version **0.36-causal** : `../builds/nexus-city-solo-debug-v36.apk`. Toucher un suspect ouvre
 d'abord sa description par le détective, puis « Lui parler (1 PA) » ou « Quitter » ; ses
 réponses passées sont dans un déroulant en bas de sa fiche.

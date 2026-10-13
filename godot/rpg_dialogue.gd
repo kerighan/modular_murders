@@ -346,10 +346,14 @@ func _show_options(conversation: bool) -> void:
 	var has_background := false
 	var has_police_records := false
 	var has_verifications := false
+	var has_summons := false
 	var folders := {}
 	for option in options:
 		var key: Array = option[0]
-		if conversation and key[0] not in ["ask", "talk_about"]:
+		if conversation and key[0] not in ["ask", "talk_about", "summon"]:
+			continue
+		if key[0] == "summon":
+			has_summons = true
 			continue
 		if key[0] == "talk_about":
 			has_subjects = true
@@ -424,6 +428,15 @@ func _show_options(conversation: bool) -> void:
 		checks.set_meta("verification_picker", true)
 		checks.pressed.connect(_show_people_questions.bind("verifications"))
 		choices.add_child(checks)
+	if has_summons:
+		# the venue calls an employee in: next turn they are here and their home is empty
+		var calls := Button.new()
+		calls.text = "Faire appeler un employé…"
+		calls.custom_minimum_size.y = 56
+		calls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		calls.set_meta("summon_picker", true)
+		calls.pressed.connect(_show_people_questions.bind("summon"))
+		choices.add_child(calls)
 	for kind in folders:
 		var folder := Button.new()
 		folder.text = {"file": "Dossiers médicaux…", "record": "Casiers & identités…", "accuse": "Accuser une personne…", "try_code": "Codes du téléphone…", "verify": "Vérifier un alibi…"}[kind]

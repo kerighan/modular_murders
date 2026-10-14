@@ -1,5 +1,32 @@
 # Passation : client Godot
 
+## Un raté ferme la conversation ; on ressort toujours d'un appartement — v52 (14 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v52.apk`, versionCode 52 / `0.52-causal`, même moteur
+`causal-3d-v13` et même signature (sauvegardes conservées). Retours de Maixent.
+
+- **Persuasion** (`causal_game.spend_question` / `refuse`) : au-delà du budget de trois questions,
+  la jauge décide ; un raté ferme la conversation (cue `stage = "refused"`, « X se ferme. "On a
+  fini, je crois." Il faudra revenir, et ce sera un point de plus. »), sans dépenser de point :
+  revenir vers le suspect coûte 1 PA comme toute approche. Avant, un raté achetait un nouveau
+  lot pour 1 PA. La compétence Rapport accorde toujours la question sans jauge. Score sauvegardé
+  dans l'historique (`["ask", "observations", 0.1]`), rejoué sans nouvelle jauge.
+- **Jauge** (`timing_dial.gd`) : aiguille `lerpf(4.2, 7.5, difficulté)`, encore +10 %.
+- **Fin de tour dans un appartement** : on ressort toujours dans la rue (« Vous ressortez dans la
+  rue. »), que les habitants rentrent ou non ; l'appartement crocheté reste ouvert depuis le
+  couloir. Avant, finir le tour dans un appartement vide y laissait le moteur, et la rue se
+  dessinait depuis l'appartement (plus de bouton « Appartements »).
+- Tests : `test_a_missed_persuasion_dial_closes_the_conversation_without_spending_a_point`,
+  `test_ending_the_turn_inside_an_empty_flat_steps_out_onto_the_street`.
+
+## La gardienne parle dès le début — v51 (14 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v51.apk`, versionCode 51 / `0.51-causal`, même moteur
+`causal-3d-v13` et même signature (sauvegardes conservées). Seed 192 (Maixent) : la gardienne
+n'avait rien à dire, seule l'option « quitter ». Son action `prowler:<rue>` exigeait
+`scene_body` alors que son halo est visible avant le constat : menu vide. Prérequis retiré
+(`scenario_play.py`) ; test `test_the_caretaker_always_has_something_to_say_even_before_the_scene`.
+
 ## Le tueur nie le rendez-vous ; mesure d'entropie des trajectoires — v50 (14 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v50.apk`, versionCode 50 / `0.50-causal`, même moteur

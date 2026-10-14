@@ -38,7 +38,7 @@ func start(challenge_kind: String, difficulty: float) -> void:
 	kind = challenge_kind
 	var level := clampf(difficulty, 0.0, 1.0)
 	half_width = lerpf(0.55, 0.22, level)
-	speed = lerpf(3.8, 6.8, level)  # a touch quicker, the arc stays the same
+	speed = lerpf(4.2, 7.5, level)  # quicker again (+10 %), the arc stays the same
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	target = rng.randf_range(0.0, TAU)

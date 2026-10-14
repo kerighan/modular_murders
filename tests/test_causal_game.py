@@ -397,7 +397,8 @@ def test_home_furniture_stays_after_documents_photos_and_search_are_consumed():
         if row.place != home or row.actor not in before:
             continue
         if not game.player.ap:
-            game.play(("end",))
+            game.play(("end",))  # the turn ends outside: walk back in
+            travel(game, home)
         if ("investigate", row.id) in game.options():
             discover(game, row.id)
             completed.append(row.id)
@@ -550,9 +551,9 @@ def test_all_suspect_questions_cost_one_pa_once_and_repeat_free_at_zero(topic):
     presentation = {tuple(row[0]): row[2] for row in game.view(game.player)["dialogue_options"]}
     assert presentation[key] == {"cost": 0, "available": True}
     assert presentation[other] == {"cost": 1, "available": True}
-    game.challenge = lambda kind, difficulty: 0.0  # a bad hand buys nothing
+    game.challenge = lambda kind, difficulty: 0.0  # a bad hand closes the conversation
     game.play(other)
-    assert game.cue["text"].startswith("Plus de PA")
+    assert game.cue["stage"] == "refused" and game.speaker is None
     assert game.player.ap == 0 and (game.session.at, game.session.journal, game.tick) == before
 
 
@@ -1350,3 +1351,43 @@ def test_the_video_archive_offers_the_previous_days_once_for_a_point():
     text = game.cue["text"]
     game.play(("ask", "camera_past"))
     assert game.cue["text"] == text and game.player.ap == before - 1
+
+
+def test_the_caretaker_always_has_something_to_say_even_before_the_scene():
+    game = fresh(192, ("search", "rapport"))
+    street = game.homes[game.case.life.people[game.case.crime.kernel.roles.victim].home]
+    travel(game, street)
+    game.play(("service_menu", "caretaker:" + street))
+    questions = [k for k in game.options() if k[0] == "ask"]
+    assert questions == [("ask", "service_action", "prowler:" + street)]
+    game.play(questions[0])
+    assert game.cue["text"].strip()
+
+
+def test_a_missed_persuasion_dial_closes_the_conversation_without_spending_a_point():
+    game = CausalGame(0, ["Ada"], challenge=lambda kind, difficulty: 0.1)
+    game.equip(0, ("search", "lockpick"), game.case.crime.scene, "libre")
+    game.start()
+    pid = sorted(game.case.plan.population)[0]
+    approach(game, pid)
+    for topic in ("relation", "evening", "motive"):
+        game.play(("ask", topic))
+    ap = game.player.ap
+    game.play(("ask", "observations"))  # past the batch: the dial, and a miss
+    assert game.cue["stage"] == "refused" and game.speaker is None and game.player.ap == ap
+    assert game.history[-1] == ["ask", "observations", 0.1]
+    assert ("ask", "observations") not in game.options()  # the conversation is over
+    restored = CausalGame.restore(0, "Ada", game.snapshot(), True, challenge=lambda kind, difficulty: 1.0)
+    assert restored.view(restored.player) == game.view(game.player)
+
+
+def test_ending_the_turn_inside_an_empty_flat_steps_out_onto_the_street():
+    game = fresh(0)
+    home = next(h for h in game.homes if not game.occupants(h) and not game.home_open(h))
+    travel(game, game.homes[home])
+    if game.session.place != home:
+        game.play(("unlock_home", home))
+    assert game.session.place == home
+    lines = game.play(("end",))
+    assert game.session.place == game.homes[home] and "Vous ressortez dans la rue." in lines
+    assert ("move", home) in game.options()  # the picked flat is still open, from the hallway

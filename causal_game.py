@@ -192,23 +192,26 @@ class CausalGame:
 
     def spend_question(self):
         """A fresh question takes a slot. Past the budget, a good hand (the dial) talks one
-        more answer out; with the rapport skill that answer is simply granted; otherwise a
-        point buys the next batch. Returns False when nothing can buy the question."""
+        more answer out; with the rapport skill that answer is simply granted. A missed dial
+        ends the conversation: coming back costs a point again. Returns False on that miss."""
         if self.slots <= 0:
             if "rapport" in self.session.skills:
                 self.slots = 1
             else:
                 score = self._replayed_score if self._replayed_score is not None else float(self.challenge("persuasion", PERSUASION_DIFFICULTY))
                 self._dial_score = round(score, 3)
-                if score >= PASS_MARK:
-                    self.slots = 1
-                elif self.player.ap > 0:
-                    self.player.ap -= 1
-                    self.slots = QUESTIONS_PER_PA
-                else:
+                if score < PASS_MARK:
                     return False
+                self.slots = 1
         self.slots -= 1
         return True
+
+    def refuse(self, name):
+        """The suspect closes up: the conversation is over, like a stop, with a last line."""
+        self._cue(f"{name} se ferme. « On a fini, je crois. » Il faudra revenir, et ce sera un point de plus.", name=name)
+        self.cue["stage"] = "refused"
+        self.speaker, self.slots, self.approaching = None, 0, False
+        self.session.doorstep = None
 
     def network_view(self):
         """The ego graph with the client's integer ids."""
@@ -534,6 +537,8 @@ class CausalGame:
                         question = "Qui est venu hier soir ?"
                     if row["id"].startswith("venue_staff:"):
                         question = "Qui travaille ici ?"
+                    if row["id"].startswith("prowler:"):
+                        question = "Du nouveau dans l'immeuble, ces derniers soirs ?"
                     if row["id"].startswith("verify:"):
                         question = "Vérifier le récit de " + self.case.life.people[row["id"].split(":", 1)[1]].name
                     if row["id"].startswith("record:"):
@@ -692,9 +697,10 @@ class CausalGame:
             s.end_turn()  # the clock only moves here; a case past its deadline closes now
             s.doorstep = None
             self.update_positions()
-            if s.place in self.homes and self.occupants(s.place):
+            if s.place in self.homes:  # nobody spends the night in somebody else's flat
+                occupied = bool(self.occupants(s.place))
                 s.go(self.homes[s.place])
-                text = "Vous regagnez le couloir avant le retour des habitants."
+                text = "Vous regagnez le couloir avant le retour des habitants." if occupied else "Vous ressortez dans la rue."
             events = [self.event_text(a) for a in waiting if a.id not in {b.id for b in self.pending_actions()}]
             events += [self.case.life.people[pid].name + " a rejoint " + s.locations[self.case.life.people[pid].workplace.value] + " : son domicile est vide ce tour-ci."
                        for pid in sorted(self.summons) if self.summons[pid] == self.tick]
@@ -793,7 +799,7 @@ class CausalGame:
                     already = action_id in s.state.completed or any(r["id"] == context_id for r in s.journal)
                     paid = (self.speaker, topic) in self.questions_paid or already or self._legacy_question_replay
                     if not paid and not self.spend_question():
-                        self._cue("Plus de PA pour poursuivre l'interrogatoire. Vous pouvez fermer la conversation et reprendre au prochain tour.", name=p.name, active=True)
+                        self.refuse(self.case.life.people[self.speaker].name)
                     else:
                         if not paid:
                             self.questions_paid.add((self.speaker, topic))
@@ -812,7 +818,7 @@ class CausalGame:
                     fresh = (self.speaker, topic) not in self.questions_paid and not any(
                         r["id"] == "context:" + self.speaker + ":" + topic for r in s.journal) and not self._legacy_question_replay
                     if fresh and not self.spend_question():
-                        self._cue("Plus de PA pour poursuivre l'interrogatoire. Vous pouvez fermer la conversation et reprendre au prochain tour.", name=p.name, active=True)
+                        self.refuse(self.case.life.people[self.speaker].name)
                     else:
                         text = s.ask_context(self.speaker, topic)
                         self.questions_paid.add((self.speaker, topic))
@@ -820,7 +826,7 @@ class CausalGame:
         elif action == "talk_about":
             fresh = not self._legacy_question_replay and not any(r["id"] == "about:" + self.speaker + ":p" + str(key[2]) for r in s.journal)
             if fresh and not self.spend_question():
-                self._cue("Plus de PA pour poursuivre l'interrogatoire. Vous pouvez fermer la conversation et reprendre au prochain tour.", name=p.name, active=True)
+                self.refuse(self.case.life.people[self.speaker].name)
             else:
                 text = s.talk_about(self.speaker, "p" + str(key[2]))
                 self._cue(text, person=self.person(self.speaker), active=True, question="Et " + self.case.life.people["p" + str(key[2])].name + " ?")

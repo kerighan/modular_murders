@@ -302,7 +302,7 @@ def test_unknown_appearances_are_not_eliminated_by_private_profiles(cases):
 def test_fingerprints_require_slot_and_a_physically_available_object(cases):
     case = cases[0]
     s = PlaySession(case)
-    p = next(iter(case.plan.population))
+    p = sorted(case.plan.population)[0]  # deterministic under hash randomisation
     s.go(case.life.people[p].home)
     s.do("search:" + s.place)
     mug = "mug:" + p

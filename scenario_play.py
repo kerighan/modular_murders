@@ -452,7 +452,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         text, support = "Rien d'inhabituel ces derniers soirs. Les habitués, les livreurs, c'est tout.", population
     add(caretaker_key, "testimony", text, caretaker_key, support)
     actions.append(DiscoveryAction(caretaker_key, Operation.INTERVIEW, "Interroger la gardienne de l'immeuble",
-        victim_street, "caretaker:" + victim_street, (caretaker_key,), ("scene_body",)))
+        victim_street, "caretaker:" + victim_street, (caretaker_key,)))  # no prerequisite: her halo is there from the start
     # A noted loan has a name: the keeper remembers who took the object. The lab will
     # say whether it served, or whether it was only borrowed.
     for index, artifact in enumerate(artifacts):

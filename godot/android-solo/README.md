@@ -1,7 +1,12 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.50-causal** : `../builds/nexus-city-solo-debug-v50.apk`, moteur `causal-3d-v13`
-(sauvegardes conservées). Le coupable qui avait rendez-vous avec la victime ne l'admet plus.
+Version **0.52-causal** : `../builds/nexus-city-solo-debug-v52.apk`, moteur `causal-3d-v13`
+(sauvegardes conservées). Rater la jauge de persuasion ferme la conversation ; l'aiguille
+tourne encore un peu plus vite ; finir le tour dans un appartement vous remet dans la rue.
+
+Version 0.51 : moteur `causal-3d-v13` (sauvegardes conservées). La gardienne de l'immeuble répond dès le premier tour.
+
+Version 0.50 : moteur `causal-3d-v13` (sauvegardes conservées). Le coupable qui avait rendez-vous avec la victime ne l'admet plus.
 
 Version 0.49 : moteur `causal-3d-v13` (sauvegardes v48 archivées, nouvelle affaire). Le personnel ne disculpe plus que trois
 suspects au plus par affaire ; les autres ont une visite partielle ou rien.

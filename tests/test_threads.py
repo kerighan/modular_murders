@@ -250,7 +250,7 @@ def test_an_ex_and_the_current_partner_know_each_other_with_a_tone_regardless_of
             assert any(b.kind is Link.PARTNERS for b in life.links(partner, victim))
             assert life.knows(ex, partner) and fact.detail in ("venom", "grace", "neutral")
             assert life.people[partner].name in life.answer_about(ex, partner)
-            assert "L'ex de" in life.answer_about(partner, ex)
+            assert "L'ex d" in life.answer_about(partner, ex)  # "L'ex de Nadia" or "L'ex d'Oscar"
             seen += 1
     assert seen >= 3
 

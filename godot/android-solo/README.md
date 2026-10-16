@@ -1,7 +1,9 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.53-causal** : `../builds/nexus-city-solo-debug-v53.apk`, moteur `causal-3d-v13`
-(sauvegardes conservées). On peut toujours sonner à une porte habitée, même sans point d'action.
+Version **0.54-causal** : `../builds/nexus-city-solo-debug-v54.apk`, moteur `causal-3d-v13`
+(sauvegardes conservées). Français relu : élisions et prépositions des lieux.
+
+Version 0.53 : moteur `causal-3d-v13` (sauvegardes conservées). On peut toujours sonner à une porte habitée, même sans point d'action.
 
 Version 0.52 : moteur `causal-3d-v13` (sauvegardes conservées). Rater la jauge de persuasion ferme la conversation ; l'aiguille
 tourne encore un peu plus vite ; finir le tour dans un appartement vous remet dans la rue.

@@ -707,8 +707,10 @@ def test_diary_appointment_can_be_asked_of_every_suspect_without_a_menu_tell():
 
 @pytest.mark.parametrize("label,expected", (("Le Comptoir", "au Comptoir"),
     ("Le serveur", "au serveur"), ("La Morgue", "à la Morgue"),
-    ("Les Appartements", "aux Appartements"), ("L'Hôpital", "à l’Hôpital"),
-    ("Place des Enseignes", "à Place des Enseignes")))
+    ("Les Appartements", "aux Appartements"), ("L'Hôpital", "à l'Hôpital"),
+    ("Place des Enseignes", "place des Enseignes"), ("Rue Verlaine", "rue Verlaine"),
+    ("Promenade du Canal", "sur la promenade du Canal"), ("Ruelle du Palace", "dans la ruelle du Palace"),
+    ("Chez Ada", "chez Ada"), ("Appartement 3", "à l'appartement 3")))
 def test_lead_location_articles(label, expected):
     assert at_label(label) == expected
 

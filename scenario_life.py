@@ -4,6 +4,7 @@ Relationships are facts; messages are authored transmissions of specific facts.
 Neither is an identity proof. Mental events are deliberately not projected.
 """
 import random
+from french import de
 from dataclasses import dataclass
 from enum import Enum
 
@@ -174,7 +175,7 @@ class Life:
                                   EventKind.RELATIONSHIP_DISCLOSED, EventKind.REFUSAL_EXPRESSED, EventKind.DEMAND_MADE):
                     reply = ("On avait des désaccords dans notre couple. Je ne vais pas prétendre le contraire."
                             if any(b.kind in (Link.PARTNERS, Link.EXES) for b in links) else
-                            f"J'avais entendu parler de tensions dans la vie sentimentale de {v.name}. Je ne connaissais pas tous les détails.")
+                            f"J'avais entendu parler de tensions dans la vie sentimentale {de(v.name)}. Je ne connaissais pas tous les détails.")
                     return reply + ("\n" + ordinary_reply if ordinary_reply else "")
             if ordinary_reply:
                 return ordinary_reply
@@ -203,7 +204,7 @@ class Life:
             if not close:
                 return f"Je ne saurais pas dire qui {v.name} fréquentait."
             named = close[0] if len(close) == 1 else ", ".join(close[:-1]) + " et " + close[-1]
-            return f"Les gens que je savais proches de {v.name} : {named}."
+            return f"Les gens que je savais proches {de(v.name)} : {named}."
         if topic == "habits":
             return {"Aime marcher le long du canal après le travail.": "Après le travail, j'aime marcher le long du canal. Ça me permet de souffler.",
                     "Collectionne les vieux disques.": "Je collectionne les vieux disques. J'aime bien fouiller les bacs pour trouver quelque chose que je ne connais pas.",
@@ -258,9 +259,9 @@ class Life:
                     "neutral": f"On se connaît de vue, par {victim}. Je n'ai rien de particulier à en dire.",
                 }[rivalry.detail]
             return name + " ? " + {  # the partner, about the ex
-                "venom": f"L'ex de {victim}. On s'est croisés deux ou trois fois. Jamais chaleureux.",
-                "grace": f"L'ex de {victim}. C'était fini depuis longtemps ; il n'y avait pas de gêne entre nous.",
-                "neutral": f"L'ex de {victim}. On se connaît de vue, c'est tout.",
+                "venom": f"L'ex {de(victim)}. On s'est croisés deux ou trois fois. Jamais chaleureux.",
+                "grace": f"L'ex {de(victim)}. C'était fini depuis longtemps ; il n'y avait pas de gêne entre nous.",
+                "neutral": f"L'ex {de(victim)}. On se connaît de vue, c'est tout.",
             }[rivalry.detail]
         breakup = next((f for f in self.ordinary if f.kind == "sour_breakup" and set(f.people) == {person, other}), None)
         if breakup:

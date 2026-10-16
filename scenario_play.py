@@ -15,6 +15,7 @@ from scenario_evidence import build_evidence, crime_window
 from scenario_evening import build_evenings, build_registrations, evening_account, remembered_times, spoken_time
 from scenario_kernel import KernelBuilder
 from scenario_sampler import Motive
+from french import at, de
 from scenario_life import Link, build_life
 from scenario_means import Method
 from scenario_observations import (Artifact, DiscoveryAction, DiscoveryState,
@@ -88,8 +89,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
         if claim:
             claims[key] = claim
 
-    def at_place_label(label):
-        return "au " + label[3:] if label.startswith("Le ") else "à " + label
+    at_place_label = at
 
     def stays(pid):
         """Where this person really sat, as intervals: verified presences, real venue visits, loans."""
@@ -151,7 +151,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
             claim={"account": p.id, "place": presence.place,
                    **remembered_times(presence), "source_actor": presence.witness} if presence else None)
         record_key = "police_record:" + p.id
-        add(record_key, "police_record", f"Fiche de {p.name}. Domicile : {dict(plan.locations)[p.home]}. Métier : {p.occupation.label}.\n"
+        add(record_key, "police_record", f"Fiche {de(p.name)}. Domicile : {dict(plan.locations)[p.home]}. Métier : {p.occupation.label}.\n"
             "Aucun antécédent judiciaire renseigné dans cette fiche.", record_key)
         actions.append(DiscoveryAction("record:" + p.id, Operation.READ,
             "Consulter la fiche et le casier de " + p.name, "police", "staff:police",
@@ -245,7 +245,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                  + (" (" + ("du " if labels[tool.split("_")[0]].startswith("Le ") else "de ") + labels[tool.split("_")[0]].removeprefix("Le ") + ")"
                     if tool.startswith(("bar_", "restaurant_")) else "")  # a venue's property, found here
                  for tool in found]
-        add("objects:" + home, "objects", "Objets examinés : " + ", ".join(names + ["tasse personnelle de " + p.name for p in residents] + ["sonnette de l'entrée"]) + ".", "objects:" + home)
+        add("objects:" + home, "objects", "Objets examinés : " + ", ".join(names + ["tasse personnelle " + de(p.name) for p in residents] + ["sonnette de l'entrée"]) + ".", "objects:" + home)
         actions.append(DiscoveryAction("search:" + home, Operation.SEARCH, "Examiner les objets du logement",
             home, "fixture:room:" + home, ("objects:" + home,)))
     if "collect_object" in {a.id for a in actions}:
@@ -325,7 +325,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
             versions = (
                 f"Oui, {name}. À {beginning}, cette personne était déjà à sa table. Et à {ending}, encore là. Je faisais le service ; cette personne n'est pas sortie entre les deux.",
                 f"{name} ? Oui, hier. Je m'occupais de sa table entre {beginning} et {ending}. Cette personne est restée sous mes yeux tout du long.",
-                f"Je me souviens de {name}. Déjà là à {beginning}, toujours à sa table à {ending}. Je faisais le service et cette personne n'est pas sortie entre les deux.",
+                f"Je me souviens {de(name)}. Déjà là à {beginning}, toujours à sa table à {ending}. Je faisais le service et cette personne n'est pas sortie entre les deux.",
             )
             text = versions[int(p.person[1:]) % len(versions)]
             requires = ("medical_window",)
@@ -423,7 +423,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                 aspect = cam.aspect if cam.aspect is not Aspect.SILHOUETTE and len(shared(cam.aspect)) >= 2 else Aspect.SILHOUETTE
                 seen = {"coat": "Manteau " + stalker_look.coat.value, "height": stalker_look.height.value.capitalize(),
                         "hair": "Cheveux " + stalker_look.hair.value}.get(aspect.value, "Silhouette seulement")
-                lines.append(f"Il y a {days} jours, {minute // 60:02d}:{minute % 60:02d} — Une personne s'arrête devant {labels[victim_home]}, "
+                lines.append(f"Il y a {days} jours, {minute // 60:02d}:{minute % 60:02d} — Une personne s'arrête devant l'immeuble {de(people[victim].name)}, "
                              f"reste un long moment sans entrer, puis s'éloigne. {seen}; visage illisible.")
                 if aspect is not Aspect.SILHOUETTE:
                     support = support & shared(aspect)
@@ -938,7 +938,7 @@ class PlaySession:
 
     def object_label(self, obj):
         if obj.startswith("mug:"):
-            return "tasse personnelle de " + self.case.life.people[obj.removeprefix("mug:")].name
+            return "tasse personnelle " + de(self.case.life.people[obj.removeprefix("mug:")].name)
         if obj.startswith("doorbell:"):
             return "sonnette · " + self.locations[obj.removeprefix("doorbell:")]
         label = next(t.kind.label for t in self.case.crime.inventory if t.id == obj)

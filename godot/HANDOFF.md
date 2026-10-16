@@ -1,5 +1,28 @@
 # Passation : client Godot
 
+## Trois parties relues : français et doublons — v54 (16 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v54.apk`, versionCode 54 / `0.54-causal`, même moteur
+`causal-3d-v13` et même signature (sauvegardes conservées ; textes recalculés). Relecture de
+trois parties (seeds 342, 94, 192) à la demande de Maixent.
+
+- **`french.py`** (nouveau module, partagé moteur/adaptateur) : `de(nom)` fait l'élision
+  (« d'Ada », « de Nadia ») ; `at(libellé)` donne la bonne préposition pour chaque forme de
+  lieu : « au Néon Bleu », « à la Morgue », « à l'hôpital », « rue Verlaine » (sans
+  préposition), « place des Enseignes », « sur la promenade du Canal », « dans la ruelle du
+  Palace », « chez Ada », « au logement d'Inès et Salomé », « à l'appartement 3 ». Remplace les
+  trois helpers locaux (`at_label`, `at_place_label`, `at_place`). Avant : « sans vie à Rue
+  Verlaine », « Fiche de Inès », « Les dernières heures de Ada », « tasse personnelle de Ada »,
+  « L'ex de Inès ».
+- Images des jours précédents : « devant l'immeuble d'Ada » au lieu de « devant Logement d'Ada
+  et Nadia » (le libellé brut nommait la colocataire).
+- Résumé : accords « 1 identifiée », « Écartée : Bruno ».
+- Pistes : « Examen demandé » retirée (doublon de « Dater le crime »).
+- `main.gd` : le titre « Casier · » accepte « Fiche d'… ».
+- **Emballage** : `app/build.gradle` liste explicitement les modules Python embarqués ; `french.py`
+  y est ajouté. Vérification après build : chaque import local de `causal_game`/`solo_runtime`
+  doit être dans cette liste (le premier build v54 sans `french.py` aurait planté au lancement).
+
 ## Sonner est toujours possible — v53 (16 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v53.apk`, versionCode 53 / `0.53-causal`, même moteur

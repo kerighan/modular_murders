@@ -12,6 +12,7 @@ from scenario_play import PlaySession, DIFFICULTY, clock, sample_playable, SERVI
 from scenario_access import next_day_routines
 from scenario_means import Method
 from scenario_evening import spoken_time
+from french import at, de
 from scenario_threads import guide
 
 
@@ -31,15 +32,7 @@ CAMERA_WINDOWS = {0: (18, "Avant 18 h"), 18: (20, "18 h – 20 h"),
 
 
 def at_label(label):
-    if label.startswith("Le "):
-        return "au " + label[3:]
-    if label.startswith("La "):
-        return "à la " + label[3:]
-    if label.startswith("Les "):
-        return "aux " + label[4:]
-    if label.startswith(("L'", "L’")):
-        return "à l’" + label[2:]
-    return "à " + label
+    return at(label)
 
 
 LOCKPICK_DIFFICULTY = 0.55  # the dial's arc width and needle speed, 0 easy .. 1 hard
@@ -268,9 +261,9 @@ class CausalGame:
         remaining = s.remaining()
         named = [row for row in notebook if row["name"] != "?"]
         cleared = [row["name"] for row in named if "p" + str(row["id"]) not in remaining]
-        suspects = [f"{len(notebook)} personnes, {len(named)} identifiées."]
+        suspects = [f"{len(notebook)} personnes, {len(named)} identifiée{'s' if len(named) != 1 else ''}."]
         if cleared:
-            suspects.append("Écartées : " + ", ".join(cleared) + ".")
+            suspects.append(("Écartées : " if len(cleared) > 1 else "Écartée : ") + ", ".join(cleared) + ".")
         states = [f"{row['name']} · {row['alibi']}" for row in named if row["alibi"] and row["name"] not in cleared]
         if states:
             suspects.append("Alibis : " + " ; ".join(states) + ".")
@@ -1082,7 +1075,7 @@ class CausalGame:
                    for i, row in enumerate(s.journal) if row["kind"] != "recording_window"]
         leads = [{"id": "lead:" + str(i), "title": text.split(" — ")[0], "reason": text, "objective": "", "complete": False,
                   "destinations": [{"place": q, "label": labels[q]} for q, label in s.locations.items() if label in text]}
-                 for i, text in enumerate(s.leads()) if not text.startswith("Aucune piste organisée")]
+                 for i, text in enumerate(s.leads()) if not text.startswith(("Aucune piste organisée", "Examen demandé"))]  # the medical lead says it
         leads.insert(0, {"id": "scene", "title": "Premier constat", "reason": "Le corps de " + victim.name + " a été retrouvé à " + labels[self.case.crime.scene] + ".", "objective": "", "complete": "scene_body" in known,
                             "destinations": [{"place": self.case.crime.scene, "label": labels[self.case.crime.scene]}]})
         if "scene_body" in known:
@@ -1141,7 +1134,7 @@ class CausalGame:
                 "objective": "", "complete": state == "refuted", "state": state,
                 "destinations": [{"place": thread["destination"], "label": labels[thread["destination"]]}] if thread["destination"] else []})
         if "victim_diary" not in known:
-            leads.append({"id": "victim_home", "title": "Les dernières heures de " + victim.name,
+            leads.append({"id": "victim_home", "title": "Les dernières heures " + de(victim.name),
                           "reason": "Son logement est accessible à l'enquête. Ses affaires peuvent raconter ses projets pour ce soir-là.", "objective": "", "complete": False,
                           "destinations": [{"place": victim.home, "label": labels[victim.home]}]})
         timing = self.crime_timing()

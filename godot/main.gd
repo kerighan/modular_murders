@@ -1938,8 +1938,8 @@ func _select_notebook_suspect(id: int) -> void:
 
 func _notebook_note_title(note: Dictionary) -> String:
 	# Only public text and acquired dossier fields. Never consult hidden actors.
-	if note.get("category", "") == "police_record" and str(note.text).begins_with("Fiche de "):
-		return "Casier · " + str(note.text).trim_prefix("Fiche de ").get_slice(".", 0)
+	if note.get("category", "") == "police_record" and (str(note.text).begins_with("Fiche de ") or str(note.text).begins_with("Fiche d'")):
+		return "Casier · " + str(note.text).trim_prefix("Fiche de ").trim_prefix("Fiche d'").get_slice(".", 0)
 	var speakers := []
 	for row in view.get("notebook", []):
 		if row.name == "?":

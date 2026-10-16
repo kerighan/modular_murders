@@ -3,6 +3,7 @@
 Ordinary episodes fit BEFORE all constrained movements; they never supply a
 whole-evening alibi. A suspect's own account cannot eliminate anybody.
 """
+from french import at
 import random
 from dataclasses import dataclass
 
@@ -147,8 +148,7 @@ def evening_account(crime, evidence, episodes, pid):
     episode = next(r for r in episodes if r.person == pid)
     labels = {n.id: n.label for n in crime.streets.nodes}
     def at_place(place):
-        label = labels[place]
-        return "au " + label[3:] if label.startswith("Le ") else "à " + label
+        return at(labels[place])
     until = spoken_time((episode.end // 15) * 15)
     activity = episode.activity[0].upper() + episode.activity[1:]  # no digital clock, no colon: spoken landmarks only
     presence = next((p for p in evidence.presences if p.person == pid), None)

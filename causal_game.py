@@ -608,12 +608,13 @@ class CausalGame:
         result = {("end",): "Terminer le tour"}
         result.update({("service_menu", a.actor): "Parler à " + self.source_person(a.actor, a.operation)["name"]
                        for a in self.staff_rows()})
+        # Approaching someone is free (the look); talking is what costs a point. So a suspect
+        # here, or a door with someone behind it, is always offered, even with no point left.
         for pid in self.case.plan.population:
-            if s.person_place(pid) == s.place and "profile:" + pid in dict(s.state.known):
+            if s.person_place(pid) == s.place:
                 result[("interrogate", int(pid[1:]))] = "Parler"
         for home, street in self.homes.items():
-            occupants = self.occupants(home)
-            if street == s.place and occupants and "profile:" + occupants[0] in dict(s.state.known):
+            if street == s.place and self.occupants(home):
                 result[("ring", home)] = "Sonner"
         if s.place in self.homes:
             result[("walk", self.homes[s.place])] = "Sortir dans la rue (0 PA)"  # free, even with no point left
@@ -629,7 +630,7 @@ class CausalGame:
             result[("move" if place in self.parents else "walk", place)] = f"Aller à {s.locations[place]} ({self.cost(place)} PA)"
         for row in s.options():
             if row["id"].startswith("meet:"):
-                result[("interrogate", int(row["actor"][1:]))] = row["label"] + " (1 PA)"
+                result[("interrogate", int(row["actor"][1:]))] = "Parler"
             elif not row["id"].startswith("ask_messages:"):
                 if not (row["actor"] in self.case.plan.population and row["id"].startswith(("interview:", "observe:"))):
                     result[("investigate", row["id"])] = row["label"] + " (1 PA)"
@@ -637,11 +638,11 @@ class CausalGame:
         # discovery was consumed. Reopening a conversation does not cost PA.
         for pid in self.case.plan.population:
             if s.person_place(pid) == s.place:
-                result[("interrogate", int(pid[1:]))] = "Parler" + (" (1 PA)" if "profile:" + pid not in dict(s.state.known) else "")
+                result[("interrogate", int(pid[1:]))] = "Parler"
         for home, street in self.homes.items():
             if street != s.place:
                 continue
-            result[("ring", home)] = "Sonner" + (" (1 PA)" if any("profile:" + pid not in dict(s.state.known) for pid in self.occupants(home)) else "")
+            result[("ring", home)] = "Sonner"
             if not self.occupants(home) and not self.home_open(home):
                 # Anyone may try the lock; the skill skips the timing dial.
                 result[("unlock_home", home)] = "Crocheter la porte" + (" (1 PA)" if "lockpick" in s.skills else " ⚡ (1 PA)")

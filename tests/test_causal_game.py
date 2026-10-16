@@ -277,7 +277,7 @@ def test_fixture_actions_are_physical_and_remain_at_zero_ap():
     assert any(f["prop"] == "body" for f in view["fixtures"])
     assert any(f["prop"] == "trash" for f in view["fixtures"])
     game.player.ap = 0
-    assert all(key[0] in ("end", "service_menu") for key in game.options())
+    assert all(key[0] in ("end", "service_menu", "ring", "interrogate") for key in game.options())  # approaching is free
     view = game.view(game.player)
     assert view["fixtures"] and all(not f["actions"] for f in view["fixtures"])
     assert game.tick == 0
@@ -1391,3 +1391,17 @@ def test_ending_the_turn_inside_an_empty_flat_steps_out_onto_the_street():
     lines = game.play(("end",))
     assert game.session.place == game.homes[home] and "Vous ressortez dans la rue." in lines
     assert ("move", home) in game.options()  # the picked flat is still open, from the hallway
+
+
+def test_a_door_with_someone_behind_it_can_always_be_rung_even_with_no_point_left():
+    game = fresh(342, ("search", "rapport"))
+    home = next(d["place"] for d in game.view(game.player)["doors"] if d["occupied"])
+    game.player.ap = 0
+    door = next(d for d in game.view(game.player)["doors"] if d["place"] == home)
+    assert door["actions"] == [[["ring", home], "Sonner"]]  # the look is free, talking costs
+    game.play(("ring", home))
+    assert game.cue["stage"] == "approach" and game.options() == {("stop",): "Quitter"}
+    game.play(("stop",))
+    game.player.ap = 2
+    game.play(("ring", home))
+    assert ("talk",) in game.options() and game.player.ap == 2  # ringing itself cost nothing

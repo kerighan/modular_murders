@@ -42,8 +42,11 @@ def measure(seed, skills=("search", "rapport")):
     structure = round(len(zlib.compress(text, 9)) / max(1, sum(shuffles) / len(shuffles)), 3)
     counts = Counter(toks)
     entropy = -sum(n / len(toks) * math.log2(n / len(toks)) for n in counts.values()) if toks else 0.0
+    from scenario_threads import family_lengths
+    lengths = family_lengths(case)
+    shortest = min((v for k, v in lengths.items() if k in ("signalement", "horaires", "mixte") and v is not None), default=None)
     return {"seed": seed, "case": str(case.seed), "motive": case.crime.kernel.premise.motive.value, "won": result["won"],
-            "steps": len(toks), "ratio": round(ratio, 3), "structure": structure, "entropy": round(entropy, 2), "kinds": len(counts),
+            "shortest": shortest, "steps": len(toks), "ratio": round(ratio, 3), "structure": structure, "entropy": round(entropy, 2), "kinds": len(counts),
             "top": counts.most_common(3)}
 
 
@@ -51,14 +54,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--seeds", default="0-29", help="range a-b or a comma-separated list")
     parser.add_argument("--worst", type=int, default=10)
+    parser.add_argument("--by", choices=("structure", "shortest"), default="structure", help="rank by repetition, or by the shortest proof thread (easiest first)")
     args = parser.parse_args(argv)
     seeds = (range(int(args.seeds.split("-")[0]), int(args.seeds.split("-")[1]) + 1) if "-" in args.seeds
              else [int(s) for s in args.seeds.split(",")])
     rows = [measure(seed) for seed in seeds]
-    rows.sort(key=lambda r: (r["structure"], r["ratio"]))
-    print(f"{'seed':>5} {'case':>14} {'motive':>16} {'won':>4} {'steps':>5} {'struct':>6} {'ratio':>6} {'entr.':>5} {'kinds':>5}  most frequent gestures")
+    rows.sort(key=lambda r: (r["structure"], r["ratio"]) if args.by == "structure" else (r["shortest"] if r["shortest"] is not None else 99, r["structure"]))
+    print(f"{'seed':>5} {'case':>14} {'motive':>16} {'won':>4} {'short':>5} {'steps':>5} {'struct':>6} {'ratio':>6} {'entr.':>5} {'kinds':>5}  most frequent gestures")
     for r in rows[:args.worst]:
-        print(f"{r['seed']:>5} {r['case']:>14} {r['motive']:>16} {str(r['won']):>4} {r['steps']:>5} {r['structure']:>6} {r['ratio']:>6} {r['entropy']:>5} {r['kinds']:>5}  "
+        print(f"{r['seed']:>5} {r['case']:>14} {r['motive']:>16} {str(r['won']):>4} {str(r['shortest']):>5} {r['steps']:>5} {r['structure']:>6} {r['ratio']:>6} {r['entropy']:>5} {r['kinds']:>5}  "
               + ", ".join(f"{k}×{n}" for k, n in r["top"]))
     structures = sorted(r["structure"] for r in rows)
     print(f"\n{len(rows)} cases · structure median {structures[len(structures) // 2]:.3f} · most varied {structures[-1]:.3f} · most repetitive {structures[0]:.3f}")

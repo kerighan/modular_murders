@@ -1,5 +1,24 @@
 # Passation : client Godot
 
+## Sonner est toujours possible — v53 (16 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v53.apk`, versionCode 53 / `0.53-causal`, même moteur
+`causal-3d-v13` et même signature (sauvegardes conservées). Seed 342 (Maixent) : « Appartement
+0 » disait qu'il fallait sonner sans rien proposer, puis texte vide.
+
+- Cause : à 0 PA, `options()` ne proposait `("ring", home)` qu'aux profils déjà connus, alors
+  que depuis l'approche (v36) sonner ne coûte rien : c'est « Lui parler » qui coûte le point. La
+  porte arrivait donc sans action, le client affichait la raison « sonnez pour lui parler »,
+  puis une seconde fois le même texte.
+- `causal_game.options()` : « Sonner » pour toute porte habitée de la rue et « Parler » pour
+  tout suspect présent, avant la barrière des PA et sans suffixe « (1 PA) » (le stade d'approche
+  l'affiche sur « Lui parler »). À 0 PA, l'approche n'offre que « Quitter ». Test
+  `test_a_door_with_someone_behind_it_can_always_be_rung_even_with_no_point_left`.
+- Smoke `summon_smoke` : seed 1 désormais (depuis le plafond des alibis, la seed 0 n'a plus
+  d'employé au Néon Bleu parmi les suspects) ; `causal_access_smoke` reste périmé (seed 7).
+- `scenario_entropy.py` : colonne `short` (longueur du fil le plus court, un proxy de
+  difficulté) et `--by shortest` pour lister les affaires les plus faciles d'abord.
+
 ## Un raté ferme la conversation ; on ressort toujours d'un appartement — v52 (14 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v52.apk`, versionCode 52 / `0.52-causal`, même moteur
@@ -301,7 +320,7 @@ déloger un suspect de chez lui pour aller fouiller son appartement.
 - Client `rpg_dialogue.gd` : les clés `summon` passent le filtre de conversation et sont
   regroupées sous « Faire appeler un employé… » (`_show_people_questions("summon")`).
 - Test : `test_an_employer_calls_a_suspect_in_once_you_know_where_they_work` ; smoke natif
-  `tests/summon_smoke.gd --seed=0` (captures `guidance-summon-*`).
+  `tests/summon_smoke.gd --seed=1` (captures `guidance-summon-*`).
 - Au passage : `slots_total = 0` pour le personnel (la boîte du barman affichait
   « Questions 3/3 » sans budget).
 - Smokes liés à une seed précise toujours périmés (pas des régressions) :

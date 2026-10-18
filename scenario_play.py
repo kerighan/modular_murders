@@ -506,8 +506,8 @@ def sample_playable(seed=0, max_attempts=200, *, profile=None):
         if not (graph.remaining({a.id for a in case.plan.artifacts}) == {case.crime.kernel.roles.author}
                 and len(case.evidence.presences) >= 2 and context_is_refutable(case)):
             continue
-        if thread_profile(family_lengths(case)) == profile or case.crime.kernel.premise.motive is Motive.PREDATION:
-            return case  # a stranger's case is its own family: no profile to match
+        if thread_profile(family_lengths(case)) == profile or case.crime.kernel.premise.motive is Motive.PREDATION or profile == "horaires":
+            return case  # a stranger's case is its own family; "horaires" never closes alone since the alibi cap
         fallback = fallback or case
     if fallback is not None:
         return fallback
@@ -657,7 +657,7 @@ class PlaySession:
 
     def options(self):
         return tuple(row for row in self.effective_plan.available(self.state, place=self.place, at=self.at)
-                     if row["operation"] != Operation.CAMERA.value
+                     if (row["operation"] != Operation.CAMERA.value or row["id"].startswith("camera_past:"))
                      and not (row["id"] in ("request_exam", "request_exam_morgue")
                               and "exam_request" in dict(self.state.known)))
 
@@ -1163,12 +1163,15 @@ class PlaySession:
         result = []
         for place, label in self.locations.items():
             rows = [row for row in self.effective_plan.available(self.state, place=place, at=self.at)
-                    if row["operation"] != Operation.CAMERA.value]
+                    if (row["operation"] != Operation.CAMERA.value or row["id"].startswith("camera_past:"))  # the previous days are one query, not an hour grid
+                    and not (row["id"] in ("request_exam", "request_exam_morgue") and "exam_request" in dict(self.state.known))]
             result.append({"place": place, "label": label, "actions": rows,
                            "camera": any(c.place == place for c in self.case.evidence.cameras)})
         return tuple(result)
 
     MISTAKE_MINUTES = 90
+    THIN_FILE = 2  # the commissaire reads a file only once the detective's own material leaves at most two people
+    THIN_FILE_MINUTES = 30
 
     def accuse(self, person, method=None, goal=None):
         known = dict(self.state.known)
@@ -1187,6 +1190,16 @@ class PlaySession:
                 return False, "Le dossier laisse encore plusieurs possibilités. L'accusation n'est pas encore déposée."
         elif person in self.cleared:
             raise ValueError("Cette personne a déjà été mise hors de cause.")
+        elif len(self.remaining()) > self.THIN_FILE:
+            # A file that still allows several people is sent back, whoever is named in it:
+            # the same answer for the culprit and for an innocent, so it tells nothing.
+            pool = len(self.remaining())
+            self._advance(self.THIN_FILE_MINUTES, force=True)
+            text = (f"Le commissaire refuse d'instruire : votre dossier laisse encore {pool} personnes possibles. "
+                    f"Resserrez le cercle avant de revenir ; vous avez perdu {self.THIN_FILE_MINUTES} minutes.")
+            if self.finished:
+                text += " Le temps vous a manqué : l'affaire est classée sans suite."
+            return False, text
         # Only the final adjudicator consults private truth, not the player's bot.
         name = self.case.life.people[person].name
         success = person == self.case.crime.kernel.roles.author and (method is None or method == self.case.crime.method.value)

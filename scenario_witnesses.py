@@ -72,9 +72,17 @@ class Appearance:
 def sample_appearances(person_ids, seed):
     """No author/victim arguments, no retries or reassignment to create a decoy."""
     rng = random.Random(f"appearance-v1:{seed}")
-    return tuple(Appearance(person, rng.choice(tuple(Coat)), rng.choice(tuple(Height)),
-                            random.Random(f"hair-v1:{seed}:{person}").choice(tuple(Hair)))
-                 for person in sorted(person_ids))
+    rows = [Appearance(person, rng.choice(tuple(Coat)), rng.choice(tuple(Height)),
+                       random.Random(f"hair-v1:{seed}:{person}").choice(tuple(Hair)))
+            for person in sorted(person_ids)]
+    # No two people with the very same three traits (Maixent, seed 102: flatmates as twins).
+    # Only a duplicate is redrawn, on its own stream, so other cases keep their looks.
+    for i, row in enumerate(rows):
+        again = random.Random(f"appearance-distinct-v1:{seed}:{row.person}")
+        while any((r.coat, r.height, r.hair) == (row.coat, row.height, row.hair) for r in rows[:i]):
+            row = Appearance(row.person, again.choice(tuple(Coat)), again.choice(tuple(Height)), again.choice(tuple(Hair)))
+        rows[i] = row
+    return tuple(rows)
 
 
 @dataclass(frozen=True)

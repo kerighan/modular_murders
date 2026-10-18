@@ -16,7 +16,7 @@ from french import at, de, e, height
 from scenario_threads import guide
 
 
-VERSION = "causal-3d-v13"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
+VERSION = "causal-3d-v14"  # social fabric, partial alibis, poisoning room, lockpick walks in; new investigations required
 TURN_MINUTES = 30  # one turn of six actions on the case clock
 DIFFICULTIES = {"facile": "Échéance large", "normal": "Échéance serrée", "difficile": "Échéance très serrée"}
 ITEMS = {"fingerprints": "Relevé d'empreintes · comparer les contacts sur les objets",
@@ -636,7 +636,7 @@ class CausalGame:
         for row in s.options():
             if row["id"].startswith("meet:"):
                 result[("interrogate", int(row["actor"][1:]))] = "Parler"
-            elif not row["id"].startswith("ask_messages:"):
+            elif not row["id"].startswith(("ask_messages:", "camera_past:")):  # footage is read at the Régie
                 if not (row["actor"] in self.case.plan.population and row["id"].startswith(("interview:", "observe:"))):
                     result[("investigate", row["id"])] = row["label"] + " (1 PA)"
         # A known suspect remains physically available, even after the profile
@@ -986,7 +986,7 @@ class CausalGame:
         fixtures, staff = self.fixture_catalogue(s.place), {}
         physical_options = dict(options)
         for row in s.options():
-            if not row["id"].startswith(("meet:", "ask_messages:")) and row["actor"] not in self.case.plan.population:
+            if not row["id"].startswith(("meet:", "ask_messages:", "camera_past:")) and row["actor"] not in self.case.plan.population:
                 physical_options.setdefault(("investigate", row["id"]), row["label"])
         if s.place == "cctv":
             physical_options.setdefault(("camera_menu",), "Consulter les archives vidéo")

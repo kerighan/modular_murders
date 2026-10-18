@@ -10,7 +10,7 @@ from scenario_play import PlaySession, sample_playable
 
 
 def play(session, max_steps=180, *, guided=False):
-    steps, queries = [], set()
+    steps, queries, blocked = [], set(), set()  # an action found unavailable on arrival is not chosen again
     for _ in range(max_steps):
         known = dict(session.state.known)
         if len(session.remaining()) == 1 and {"medical_window", "victim_diary"} <= known.keys():
@@ -26,6 +26,8 @@ def play(session, max_steps=180, *, guided=False):
         choices = []
         for row in session.board():
             for action in row["actions"]:
+                if action["id"] in blocked:
+                    continue
                 kind = action["operation"]
                 score = priority.get(action["id"], {"interview": 5, "verify": 7, "read": 8,
                                                       "collect": 9, "analyze": 10, "search": 15}.get(kind, 12))
@@ -51,6 +53,8 @@ def play(session, max_steps=180, *, guided=False):
                         score = 8
                     elif identifier.startswith("venue_guests:"):
                         score = 10
+                    elif identifier.startswith("camera_past:"):
+                        score = 6  # the days before: one query, often decisive
                 # Prefer the current place within a priority; use only public IDs.
                 choices.append((score, row["place"] != session.place, row["place"], action["id"]))
         # Once a public estimate is acquired, use it to select camera hours.
@@ -97,6 +101,7 @@ def play(session, max_steps=180, *, guided=False):
         else:
             # Movement may have caused a witness's window to close.
             if action not in {row["id"] for row in session.options()}:
+                blocked.add(action)
                 continue
             text = session.do(action)
         steps.append({"action": action, "text": text,

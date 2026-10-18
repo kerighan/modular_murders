@@ -1,5 +1,37 @@
 # Passation : client Godot
 
+## Pas de jumeaux, pas de dossier mince, pas de seed lente — v56 (18 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v56.apk`, versionCode 56 / `0.56-causal`, moteur
+`causal-3d-v14` (sauvegardes v55 archivées : l'affaire de certaines seeds change). « Corrige le
+reste » : les trois points laissés ouverts en v55.
+
+- **Apparences distinctes** (`scenario_witnesses.sample_appearances`) : deux suspects n'ont
+  jamais les trois mêmes traits ; seul un doublon est retiré, sur un flux à lui
+  (`appearance-distinct-v1:seed:pid`), les autres affaires gardent leurs visages. 0 doublon
+  sur 80 seeds (seed 102 : 7 apparences sur 7).
+- **Dossier trop mince** (`PlaySession.accuse`, mode libre) : tant que le matériel du détective
+  laisse plus de deux personnes possibles (`remaining()`), le commissaire refuse d'instruire,
+  pour le coupable comme pour un innocent (même phrase, aucun indice), 30 minutes perdues,
+  personne n'est blanchi (`THIN_FILE = 2`, `THIN_FILE_MINUTES = 30`). À deux restants, les
+  règles d'avant : une erreur coûte 90 minutes et blanchit l'accusé. Fini l'accusation du bon
+  coupable au tour 3 avec cinq suspects en lice. Le mode classique (`strict`) est inchangé.
+- **Seeds lentes** (`sample_playable`) : depuis le plafond des alibis, le profil « horaires » ne
+  se réalisait jamais, et un tiers des seeds épuisaient 200 relances avant de rendre la
+  première affaire soluble (seed 1 : 11 s). Ce profil accepte désormais la première affaire
+  soluble : seed 1 en 0,4 s, même affaire qu'avant.
+- Bots aveugles (`scenario_play.board`) : l'action « jours précédents » de la caméra entre dans
+  leur tableau (une requête, pas une grille horaire) ; sans elle, le bot restait à deux
+  suspects sur la seed 3 (prédation) depuis les apparences distinctes.
+- Smoke `summon_smoke` : seed 4 (les seeds 1 et 6 ont changé d'affaire ou d'employés).
+- `scenario_play.board()` et `options()` listent « jours précédents » (`camera_past:`) et plus
+  « Transférer le corps » une fois l'examen demandé (le bot de protocole bouclait dessus) ;
+  l'adaptateur garde les images à la Régie (`physical_options` et la boucle `investigate` les
+  ignorent). Bot aveugle : une action trouvée indisponible n'est plus rechoisie ; « jours
+  précédents » vaut 6 en mode guidé.
+- Tests `test_free_mode_accuses_at_own_risk_against_the_clock` et
+  `test_the_deadline_closes_the_case` adaptés (dossier mince d'abord, puis cercle resserré).
+
 ## Huit parties relues, dix retouches — v55 (18 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v55.apk`, versionCode 55 / `0.55-causal`, même moteur
@@ -25,7 +57,7 @@ Maixent : six parties, jusqu'à dix petits soucis. Seeds 342, 94, 192, 100, 101,
 9. **Résumé** : ligne « Restent : Karim, Chloé. » (identifiés non écartés).
 10. **Fiche police** : « plutôt petit » pour un homme.
 
-Smoke `summon_smoke` : seed 6 (la seed 1 demande 6 relances du sampler, 11 s de génération,
+Smoke `summon_smoke` : seed 4 (la seed 1 demandait 6 relances du sampler, 11 s de génération,
 plus que les 12,5 s d'attente du smoke sous charge ; à garder en tête pour le téléphone : une
 seed lente se voit au lancement).
 
@@ -72,7 +104,7 @@ APK `builds/nexus-city-solo-debug-v53.apk`, versionCode 53 / `0.53-causal`, mêm
   tout suspect présent, avant la barrière des PA et sans suffixe « (1 PA) » (le stade d'approche
   l'affiche sur « Lui parler »). À 0 PA, l'approche n'offre que « Quitter ». Test
   `test_a_door_with_someone_behind_it_can_always_be_rung_even_with_no_point_left`.
-- Smoke `summon_smoke` : seed 6 désormais (depuis le plafond des alibis, la seed 0 n'a plus
+- Smoke `summon_smoke` : seed 4 désormais (depuis le plafond des alibis, la seed 0 n'a plus
   d'employé au Néon Bleu parmi les suspects) ; `causal_access_smoke` reste périmé (seed 7).
 - `scenario_entropy.py` : colonne `short` (longueur du fil le plus court, un proxy de
   difficulté) et `--by shortest` pour lister les affaires les plus faciles d'abord.
@@ -378,7 +410,7 @@ déloger un suspect de chez lui pour aller fouiller son appartement.
 - Client `rpg_dialogue.gd` : les clés `summon` passent le filtre de conversation et sont
   regroupées sous « Faire appeler un employé… » (`_show_people_questions("summon")`).
 - Test : `test_an_employer_calls_a_suspect_in_once_you_know_where_they_work` ; smoke natif
-  `tests/summon_smoke.gd --seed=6` (captures `guidance-summon-*`).
+  `tests/summon_smoke.gd --seed=4` (captures `guidance-summon-*`).
 - Au passage : `slots_total = 0` pour le personnel (la boîte du barman affichait
   « Questions 3/3 » sans budget).
 - Smokes liés à une seed précise toujours périmés (pas des régressions) :

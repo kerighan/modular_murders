@@ -1,7 +1,11 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.55-causal** : `../builds/nexus-city-solo-debug-v55.apk`, moteur `causal-3d-v13`
-(sauvegardes conservées). Accords de genre, un bouton par résident dans les colocations,
+Version **0.56-causal** : `../builds/nexus-city-solo-debug-v56.apk`, moteur `causal-3d-v14`
+(sauvegardes v55 archivées, nouvelle affaire). Deux suspects n'ont plus la même apparence ; le
+commissaire refuse un dossier qui laisse plus de deux personnes possibles ; démarrage plus
+rapide sur certaines seeds.
+
+Version 0.55 : moteur `causal-3d-v13` (sauvegardes conservées). Accords de genre, un bouton par résident dans les colocations,
 élisions, résumé qui liste les suspects restants.
 
 Version 0.54 : moteur `causal-3d-v13` (sauvegardes conservées). Français relu : élisions et prépositions des lieux.

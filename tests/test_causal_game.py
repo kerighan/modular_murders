@@ -151,7 +151,7 @@ def test_public_protocol_allows_a_complete_investigation(seed, skills):
         if action.startswith(("meet:", "interview:p", "observe:p")):
             discover(game, action)
             continue
-        travel(game, "cctv" if action.startswith("camera ") else place)
+        travel(game, "cctv" if action.startswith(("camera ", "camera_past:")) else place)
         if not game.player.ap:
             game.play(("end",))
         if action.startswith("camera "):
@@ -165,6 +165,11 @@ def test_public_protocol_allows_a_complete_investigation(seed, skills):
             acquired = set(dict(s.state.known)) - known_before
             packet = [a for a in game.case.plan.artifacts if a.id in acquired]
             assert len(game.case.plan.population.intersection(*(a.candidates for a in packet))) >= 2
+            game.play(("stop",))
+        elif action.startswith("camera_past:"):  # read at the Régie, like the other footage
+            game.play(("camera_menu",))
+            game.play(("ask", "camera_district", action.split(":", 1)[1]))
+            game.play(("ask", "camera_past"))
             game.play(("stop",))
         elif action in {a["id"] for a in s.options()}:
             discover(game, action)
@@ -1158,7 +1163,9 @@ def test_setup_offers_difficulties_and_the_view_carries_the_deadline():
         game.equip(0, ("search", "rapport"), game.case.crime.scene, "impossible")
 
 
-def test_wrong_accusation_costs_time_clears_the_accused_and_survives_restore():
+def test_wrong_accusation_costs_time_clears_the_accused_and_survives_restore(monkeypatch):
+    from scenario_play import PlaySession
+    monkeypatch.setattr(PlaySession, "THIN_FILE", 9)  # the commissaire reads this file; replay sees the same rule
     game = CausalGame(0, ["Ada"])
     game.equip(0, ("search", "rapport"), game.case.crime.scene, "facile")
     game.start()

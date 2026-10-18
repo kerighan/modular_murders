@@ -136,6 +136,12 @@ def test_free_mode_accuses_at_own_risk_against_the_clock():
     author = case.crime.kernel.roles.author
     innocent = sorted(case.plan.population - {author})[0]
     left = session.time_left
+    won, text = session.accuse(innocent)  # nothing collected: the file is sent back, nobody is cleared
+    assert not won and "refuse d'instruire" in text and innocent not in session.cleared and session.time_left == left - 30
+    won, text = session.accuse(author)  # the same answer for the culprit: no tell
+    assert not won and "refuse d'instruire" in text and session.time_left == left - 60
+    left = session.time_left
+    session.remaining = lambda: {author, innocent} - session.cleared  # the detective's own material now leaves two people
     won, text = session.accuse(innocent)
     assert not won and not session.finished and innocent in session.cleared
     assert session.time_left == left - 90 and innocent not in session.remaining()
@@ -182,6 +188,7 @@ def test_turn_mode_mistake_costs_minutes_but_closes_only_at_the_turn_end():
     wrong = next(p for p in sorted(case.plan.population) if p != author)
     s.place = case.life.people[wrong].home
     s.do("meet:" + wrong)
+    s.remaining = lambda: {wrong, author}  # a file the commissaire reads
     while s.time_left > 60:
         s.end_turn()
     won, text = s.accuse(wrong)

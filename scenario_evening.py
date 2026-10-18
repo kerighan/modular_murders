@@ -3,7 +3,7 @@
 Ordinary episodes fit BEFORE all constrained movements; they never supply a
 whole-evening alibi. A suspect's own account cannot eliminate anybody.
 """
-from french import at
+from french import at, e
 import random
 from dataclasses import dataclass
 
@@ -146,6 +146,7 @@ def remembered_times(presence):
 def evening_account(crime, evidence, episodes, pid):
     """One chronological story: at home until a landmark, then where the evening went."""
     episode = next(r for r in episodes if r.person == pid)
+    ee = e(next(p.name for p in crime.kernel.world.people if p.id == pid))  # 'restée' for Lina
     labels = {n.id: n.label for n in crime.streets.nodes}
     def at_place(place):
         return at(labels[place])
@@ -160,9 +161,9 @@ def evening_account(crime, evidence, episodes, pid):
         return f"Jusqu'à {until}, j'étais chez moi. {activity}\nEnsuite, j'étais {at_place(presence.place)}{when}."
     venue = next((v for v in crime.venue_presences if v.person == pid), None)
     if venue:
-        return f"Jusqu'à {until}, j'étais chez moi. {activity}\nEnsuite, je suis passé {at_place(venue.place)}. Il y avait du monde."
+        return f"Jusqu'à {until}, j'étais chez moi. {activity}\nEnsuite, je suis passé{ee} {at_place(venue.place)}. Il y avait du monde."
     borrowing = next((b for b in crime.mundane_borrowings if b.actor == pid), None)
     if borrowing:
         place = at_place(borrowing.outbound.nodes[-1])
-        return f"Dans la journée, je suis passé {place} chercher un objet qu'on m'avait prêté.\nLe soir, je suis resté chez moi. {activity}"
-    return f"Je suis resté chez moi toute la soirée. {activity}"
+        return f"Dans la journée, je suis passé{ee} {place} chercher un objet qu'on m'avait prêté.\nLe soir, je suis resté{ee} chez moi. {activity}"
+    return f"Je suis resté{ee} chez moi toute la soirée. {activity}"

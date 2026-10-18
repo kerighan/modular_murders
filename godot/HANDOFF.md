@@ -1,5 +1,40 @@
 # Passation : client Godot
 
+## Huit parties relues, dix retouches — v55 (18 octobre 2026)
+
+APK `builds/nexus-city-solo-debug-v55.apk`, versionCode 55 / `0.55-causal`, même moteur
+`causal-3d-v13` et même signature (sauvegardes conservées ; textes recalculés). Demande de
+Maixent : six parties, jusqu'à dix petits soucis. Seeds 342, 94, 192, 100, 101, 102, 110, 114.
+
+1. **Accords de genre** (`french.FEMININE`, `e(nom)`, `height(nom, valeur)`) : « Lina est
+   restée chez moi », « je suis passée », « Bruno : plutôt grand », « Farid a été retrouvé »,
+   « Je n'y suis finalement pas allé », « appelée au travail », « mise hors de cause ». Les
+   phrases sur « la personne » (témoins, caméras, gardienne) restent au féminin.
+2. **« Parler de quelqu'un… »** n'offre plus la victime (sa réponse doublait « Lien »).
+3. **Colocation** : au seuil d'un logement partagé, un bouton par résident présent
+   (`("ring", home, i)`, « Sonner · Chloé » ou « Sonner · l'autre résident » tant que le
+   profil n'est pas connu). Avant, seul le premier résident répondait, l'autre était
+   injoignable chez lui (seed 102, Karim et Chloé).
+4. **Élisions** : « Vérifier le récit d'Ada », « Le fil d'Oscar ».
+5. **« Chez Salomé et Oscar »** : la victime en tête du libellé du logement partagé.
+6. **Fin d'affaire** : plus de « l'aveu a fait le reste » ; « Dossier retenu sans le dernier
+   projet de la victime : le commissaire a tranché sur le reste. »
+7. **Rendez-vous manqué** sous « Témoin » : « Hier soir, Salomé devait venir chez moi. J'ai
+   attendu pour rien. »
+8. **Résumé** : « une personne (plutôt petite) » au lieu de « quelqu'un (…) ».
+9. **Résumé** : ligne « Restent : Karim, Chloé. » (identifiés non écartés).
+10. **Fiche police** : « plutôt petit » pour un homme.
+
+Smoke `summon_smoke` : seed 6 (la seed 1 demande 6 relances du sampler, 11 s de génération,
+plus que les 12,5 s d'attente du smoke sous charge ; à garder en tête pour le téléphone : une
+seed lente se voit au lancement).
+
+Vu aussi, non corrigé : deux suspects peuvent avoir exactement la même apparence (seed 102,
+Karim et Chloé) ; les trois traits ne distinguent alors pas, ce qui est voulu par la règle
+« jamais une identification par un seul trait », mais deux jumeaux dans une colocation, c'est
+beaucoup. Et l'accusation du bon coupable est acceptée dès le tour 3 avec cinq suspects
+restants : c'est le mode libre, le texte de fin le dit désormais honnêtement.
+
 ## Trois parties relues : français et doublons — v54 (16 octobre 2026)
 
 APK `builds/nexus-city-solo-debug-v54.apk`, versionCode 54 / `0.54-causal`, même moteur
@@ -37,7 +72,7 @@ APK `builds/nexus-city-solo-debug-v53.apk`, versionCode 53 / `0.53-causal`, mêm
   tout suspect présent, avant la barrière des PA et sans suffixe « (1 PA) » (le stade d'approche
   l'affiche sur « Lui parler »). À 0 PA, l'approche n'offre que « Quitter ». Test
   `test_a_door_with_someone_behind_it_can_always_be_rung_even_with_no_point_left`.
-- Smoke `summon_smoke` : seed 1 désormais (depuis le plafond des alibis, la seed 0 n'a plus
+- Smoke `summon_smoke` : seed 6 désormais (depuis le plafond des alibis, la seed 0 n'a plus
   d'employé au Néon Bleu parmi les suspects) ; `causal_access_smoke` reste périmé (seed 7).
 - `scenario_entropy.py` : colonne `short` (longueur du fil le plus court, un proxy de
   difficulté) et `--by shortest` pour lister les affaires les plus faciles d'abord.
@@ -343,7 +378,7 @@ déloger un suspect de chez lui pour aller fouiller son appartement.
 - Client `rpg_dialogue.gd` : les clés `summon` passent le filtre de conversation et sont
   regroupées sous « Faire appeler un employé… » (`_show_people_questions("summon")`).
 - Test : `test_an_employer_calls_a_suspect_in_once_you_know_where_they_work` ; smoke natif
-  `tests/summon_smoke.gd --seed=1` (captures `guidance-summon-*`).
+  `tests/summon_smoke.gd --seed=6` (captures `guidance-summon-*`).
 - Au passage : `slots_total = 0` pour le personnel (la boîte du barman affichait
   « Questions 3/3 » sans budget).
 - Smokes liés à une seed précise toujours périmés (pas des régressions) :

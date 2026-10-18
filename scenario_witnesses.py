@@ -347,7 +347,7 @@ def statements(layer, witness_id):
             text = f"Oui, cette personne sur la photo, je lui ai servi un verre {_time(event.minute)}."
         elif event.kind is EventKind.NONARRIVAL:
             visitor = next(p.name for p in layer.crime.kernel.world.people if p.id == event.target)
-            text = f"{visitor} devait venir chez moi. J'ai attendu pour rien."
+            text = f"Hier soir, {visitor} devait venir chez moi. J'ai attendu pour rien."
         else:
             text = {
                 EventKind.SHARED_ROUTE: f"La personne sur votre photo passait ici {_time(event.minute)}. Quelqu'un empruntait la même rue.",

@@ -12,7 +12,7 @@ from scenario_play import PlaySession, DIFFICULTY, clock, sample_playable, SERVI
 from scenario_access import next_day_routines
 from scenario_means import Method
 from scenario_evening import spoken_time
-from french import at, de
+from french import at, de, e, height
 from scenario_threads import guide
 
 
@@ -112,7 +112,7 @@ class CausalGame:
     def expected(self, pid, at, tick):
         """Where this person is at that minute of that turn, and what they are doing."""
         if self.summons.get(pid) == tick:
-            return self.case.life.people[pid].workplace.value, "appelé au travail"
+            return self.case.life.people[pid].workplace.value, "appelé" + e(self.case.life.people[pid].name) + " au travail"
         r = next(r for r in self.routines if r.person == pid)
         return r.place_at(at), r.activity_at(at)
 
@@ -129,6 +129,12 @@ class CausalGame:
         venue = next((k.place for k in self.case.crime.keepers if k.id == self.speaker), None)
         return [pid for pid in sorted(self.case.plan.population) if venue and self.case.life.people[pid].workplace.value == venue
                 and self.workplace_known(pid) and self.session.person_places[pid] != venue and self.summons.get(pid) != self.tick + 1]
+
+    def flatmate_bells(self, home):
+        """In a shared flat, each resident at home can be asked for at the door."""
+        known = dict(self.session.state.known)
+        return {("ring", home, i): "Sonner · " + (self.case.life.people[pid].name if "profile:" + pid in known else "l'autre résident")
+                for i, pid in enumerate(self.occupants(home)) if i > 0}
 
     def occupants(self, home):
         return sorted(pid for pid, place in self.session.person_places.items() if place == home)
@@ -173,7 +179,8 @@ class CausalGame:
         """What the detective sees: the name once given, and the three traits anyone can see."""
         look = self.person(pid)["appearance"]
         name = self.person(pid)["name"]
-        traits = f"{look['height'][0].upper() + look['height'][1:]}, manteau {look['coat']}, cheveux {look['hair']}."
+        tall = height(name or "", look["height"])
+        traits = f"{tall[0].upper() + tall[1:]}, manteau {look['coat']}, cheveux {look['hair']}."
         return (f"Le suspect s'appelle {name}. " if name else "Cette personne ne vous a pas dit son nom. ") + traits
 
     def start_talking(self):
@@ -233,7 +240,7 @@ class CausalGame:
         s, case = self.session, self.case
         victim = case.life.people[case.crime.kernel.roles.victim]
         ids = {r["id"]: r for r in s.journal}
-        affair = [f"{victim.name} a été retrouvée sans vie {at_label(labels[case.crime.scene])}."]
+        affair = [f"{victim.name} a été retrouvé{e(victim.name)} sans vie {at_label(labels[case.crime.scene])}."]
         if "medical_window" in known:
             when = ids["medical_window"]["text"].split("\n")[0].replace("Rapport du médecin légiste — ", "").rstrip(".")
             affair.append(f"Crime commis {when}, par {case.crime.method.label.lower()} (légiste).")
@@ -254,7 +261,7 @@ class CausalGame:
             if r["id"].startswith("observations:") and claim.get("sightings"):
                 speaker = case.life.people[r["id"].split(":")[1]].name
                 for row in claim["sightings"]:
-                    who = case.life.people[row["person"]].name if row.get("named", True) else "quelqu'un (" + ", ".join(row.get("traits", {}).values()) + ")"
+                    who = case.life.people[row["person"]].name if row.get("named", True) else "une personne (" + ", ".join(row.get("traits", {}).values()) + ")"
                     parade.append(f"{who} {at_label(labels[row['place']])} vers {spoken_time(row['minute'])}, selon {speaker}")
         objects = sorted({s.object_label(obj) for obj in s.carried})  # in hand, not every mug looked at
         facts = [r["text"].split("\n")[0] for r in s.journal if r["kind"] in ("laboratory", "laboratory_contact")]
@@ -267,6 +274,9 @@ class CausalGame:
         states = [f"{row['name']} · {row['alibi']}" for row in named if row["alibi"] and row["name"] not in cleared]
         if states:
             suspects.append("Alibis : " + " ; ".join(states) + ".")
+        left = [row["name"] for row in named if row["name"] not in cleared]
+        if left:
+            suspects.append(("Restent : " if len(left) > 1 else "Reste : ") + ", ".join(left) + ".")
         open_leads = [lead["title"] for lead in leads if not lead.get("complete")]
         sections = [("L'affaire", " ".join(affair))]
         if seen:
@@ -288,7 +298,7 @@ class CausalGame:
         labels = dict(self.session.locations)
         victim = self.case.crime.kernel.roles.victim
         for home in self.homes:
-            residents = [p for p in self.case.life.people.values() if p.home == home]
+            residents = sorted((p for p in self.case.life.people.values() if p.home == home), key=lambda p: p.id != victim)  # the victim first
             identified = [p.name for p in residents if p.id == victim or "profile:" + p.id in known]
             if residents:
                 labels[home] = "Chez " + " et ".join(identified) if identified else "Appartement " + home.removeprefix("home")
@@ -533,7 +543,7 @@ class CausalGame:
                     if row["id"].startswith("prowler:"):
                         question = "Du nouveau dans l'immeuble, ces derniers soirs ?"
                     if row["id"].startswith("verify:"):
-                        question = "Vérifier le récit de " + self.case.life.people[row["id"].split(":", 1)[1]].name
+                        question = "Vérifier le récit " + de(self.case.life.people[row["id"].split(":", 1)[1]].name)
                     if row["id"].startswith("record:"):
                         pid = row["id"].split(":", 1)[1]
                         question = "Casier · " + (self.case.life.people[pid].name if pid in s.named_people() else "Fiche n°" + str(int(pid[1:]) + 1))
@@ -585,7 +595,8 @@ class CausalGame:
                 if "victim_diary" in dict(s.state.known) and self.case.claims["victim_diary"]["appointment"]:
                     options[("ask", "appointment")] = "Agenda · Le rendez-vous noté dans son agenda ?"
                 options.update({("talk_about", int(self.speaker[1:]), int(pid[1:])): person.name
-                                for pid, person in self.case.life.people.items() if pid != self.speaker})
+                                for pid, person in self.case.life.people.items()
+                                if pid != self.speaker and pid != self.case.crime.kernel.roles.victim})  # the victim has her own question
             for key in list(options):
                 if key[0] not in ("ask", "talk_about") or key[1] == "service_status" or self.speaker == "camera":
                     continue
@@ -609,6 +620,7 @@ class CausalGame:
         for home, street in self.homes.items():
             if street == s.place and self.occupants(home):
                 result[("ring", home)] = "Sonner"
+                result.update(self.flatmate_bells(home))
         if s.place in self.homes:
             result[("walk", self.homes[s.place])] = "Sortir dans la rue (0 PA)"  # free, even with no point left
         if not p.ap:
@@ -636,6 +648,7 @@ class CausalGame:
             if street != s.place:
                 continue
             result[("ring", home)] = "Sonner"
+            result.update(self.flatmate_bells(home))
             if not self.occupants(home) and not self.home_open(home):
                 # Anyone may try the lock; the skill skips the timing dial.
                 result[("unlock_home", home)] = "Crocheter la porte" + (" (1 PA)" if "lockpick" in s.skills else " ⚡ (1 PA)")
@@ -707,7 +720,7 @@ class CausalGame:
             people = self.occupants(key[1])
             if people:
                 s.doorstep = key[1]
-                self.open_questions(people[0])
+                self.open_questions(people[key[2] if len(key) > 2 else 0])  # a flatmate answers the second ring
             else:
                 self._cue("Personne ne répond. L'appartement est vide.", name=p.name)
         elif action == "unlock_home":
@@ -1033,6 +1046,7 @@ class CausalGame:
             people = present_by_place[home]
             answered = s.doorstep == home
             actions = [(k, options[k]) for k in (("ring", home), ("unlock_home", home), ("move", home)) if k in options]
+            actions += [(k, options[k]) for k in options if k[0] == "ring" and k[1] == home and len(k) > 2]
             doors.append({"place": home, "label": labels[home], "door": True,
                           "id": people[0]["id"] if people else -1, "name": people[0]["name"] if people else None,
                           "look": people[0]["look"] if people else "", "occupied": bool(people), "answered": answered,
@@ -1051,7 +1065,7 @@ class CausalGame:
             notebook.append({"id": profile["id"], "name": p.name if identified else "?", "out": False,
                              "profile_known": profile_known,
                              "home": {"place": p.home, "region": self.homes[p.home], "label": labels[p.home], "region_label": labels[self.homes[p.home]]} if profile_known else None,
-                             "traits": ({"Cheveux": profile["appearance"]["hair"], "Manteau": profile["appearance"]["coat"], "Taille": profile["appearance"]["height"]} | ({"Métier": p.occupation.label} if "police_record:" + pid in known or any(r["id"] == "context:" + pid + ":work" for r in s.journal) else {})) if profile_known else {},
+                             "traits": ({"Cheveux": profile["appearance"]["hair"], "Manteau": profile["appearance"]["coat"], "Taille": height(p.name, profile["appearance"]["height"])} | ({"Métier": p.occupation.label} if "police_record:" + pid in known or any(r["id"] == "context:" + pid + ":work" for r in s.journal) else {})) if profile_known else {},
                              "appearance": profile["appearance"] if profile_known else {},
                              "whereabouts": {"current": {"place": s.person_places[pid], "label": labels[s.person_places[pid]],
                                              "activity": self.expected(pid, getattr(self, "position_at", s.at), self.tick)[1]},
@@ -1111,14 +1125,14 @@ class CausalGame:
             keeper = self.source_person(verification.actor, verification.operation)
             account = self.case.claims["evening:" + pid]
             when = "entre " + spoken_time(account["start"]) + " et " + spoken_time(account["end"]) if "start" in account else "pendant une partie de la soirée"
-            leads.append({"id": "evening:" + pid, "title": "Vérifier le récit de " + name,
+            leads.append({"id": "evening:" + pid, "title": "Vérifier le récit " + de(name),
                 "reason": name + " dit avoir été " + at_label(labels[presence_row.place]) + ", " + when + "."
                     + (" Le témoignage couvre la période du crime : alibi confirmé." if confirmed else
                        " Récit vrai, mais le personnel ne couvre pas toute la période : cela n'écarte personne." if partial else
                        " Cette personne était dans la salle au moment de l'empoisonnement : une occasion, pas un alibi." if on_site else
                        " Récit corroboré. Il reste à comparer ses horaires au rapport médical" + (" et à l'analyse du verre." if self.case.crime.method is Method.POISONED else ".") if collected else
                        " " + keeper["name"] + " peut vérifier ce récit sur place."),
-                "objective": "Témoignage recueilli" if collected else "Sur place · parler " + at_label(keeper["name"]) + " → Vérifier le récit de " + name,
+                "objective": "Témoignage recueilli" if collected else "Sur place · parler " + at_label(keeper["name"]) + " → Vérifier le récit " + de(name),
                 "complete": collected, "state": "confirmed" if confirmed else "partial" if partial else "on_site" if on_site else "corroborated" if collected else "open",
                 "destinations": [] if collected else [{"place": verification.place, "label": labels[verification.place]}]})
         for thread in s.inquiry_threads():
@@ -1129,7 +1143,7 @@ class CausalGame:
             explanation = ("\n\n" + " ".join(r["text"] for r in thread["reasons"])) if state == "refuted" else (
                 "\n\nLe témoignage est recueilli. Le moment du crime ou l'analyse du verre reste à recouper." if state == "awaiting_time" else
                 "\n\nUn conflit ou une relation n'établit pas une culpabilité. Sa soirée reste une question ouverte.")
-            leads.append({"id": "thread:" + pid, "title": "Le fil de " + self.case.life.people[pid].name,
+            leads.append({"id": "thread:" + pid, "title": "Le fil " + de(self.case.life.people[pid].name),
                 "reason": "\n".join(thread["details"]) + explanation,
                 "objective": "", "complete": state == "refuted", "state": state,
                 "destinations": [{"place": thread["destination"], "label": labels[thread["destination"]]}] if thread["destination"] else []})

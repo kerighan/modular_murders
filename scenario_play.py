@@ -15,7 +15,7 @@ from scenario_evidence import build_evidence, crime_window
 from scenario_evening import build_evenings, build_registrations, evening_account, remembered_times, spoken_time
 from scenario_kernel import KernelBuilder
 from scenario_sampler import Motive
-from french import at, de
+from french import at, de, e, height
 from scenario_life import Link, build_life
 from scenario_means import Method
 from scenario_observations import (Artifact, DiscoveryAction, DiscoveryState,
@@ -140,7 +140,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
             continue
         a = next(a for a in evidence.appearances if a.person == p.id)
         key = "profile:" + p.id
-        text = f"{p.name} — Cheveux {a.hair.value}; manteau {a.coat.value}; {a.height.value}."
+        text = f"{p.name} — Cheveux {a.hair.value}; manteau {a.coat.value}; {height(p.name, a.height.value)}."
         add(key, "person", text, key, claim={"profile": p.id, "coat": a.coat.value, "height": a.height.value, "hair": a.hair.value})
         actions.append(DiscoveryAction("meet:" + p.id, Operation.INTERVIEW, "Parler à " + p.name,
                                        p.home, p.id, (key, "evening:" + p.id)))
@@ -297,7 +297,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                     f"Mais dans la salle, tout le monde pouvait s'approcher du comptoir. Je ne peux pas jurer de ce que chacun a fait.")
             add("alibi:" + p.person, "corroboration", text, p.id,
                 claim={"account": p.person, "on_site": True, "place": p.place, "source_actor": p.witness})
-            actions.append(DiscoveryAction("verify:" + p.person, Operation.VERIFY, "Vérifier le récit de " + name,
+            actions.append(DiscoveryAction("verify:" + p.person, Operation.VERIFY, "Vérifier le récit " + de(name),
                                            p.place, p.witness, ("alibi:" + p.person,), ("evening:" + p.person,)))
             continue
         if p.basis == "continuous_noncontact":
@@ -314,7 +314,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
             # True, verified, and silent on part of the crime window: it clears nobody.
             add("alibi:" + p.person, "corroboration", text, p.id,
                 claim={"account": p.person, "partial": True, "place": p.place, **times, "source_actor": p.witness})
-            actions.append(DiscoveryAction("verify:" + p.person, Operation.VERIFY, "Vérifier le récit de " + name,
+            actions.append(DiscoveryAction("verify:" + p.person, Operation.VERIFY, "Vérifier le récit " + de(name),
                                            p.place, p.witness, ("alibi:" + p.person,), ("evening:" + p.person,)))
             continue
         else:
@@ -334,7 +334,7 @@ def build_case(seed=0, *, focus_assault=0, register_memory=0.5, partial_alibis=0
                    **remembered_times(p), "source_actor": p.witness,
                    **({"event_span": ("drink_served", "victim_collapsed")} if p.basis == "continuous_noncontact" else {})})
         actions.append(DiscoveryAction("verify:" + p.person, Operation.VERIFY,
-            "Vérifier le récit de " + name,
+            "Vérifier le récit " + de(name),
             p.place, p.witness, ("alibi:" + p.person,), ("evening:" + p.person,)))
     # Both existing keepers have a public conversation, even without a stock
     # incident. The register is post-authored from REAL venue visits on shift.
@@ -1143,7 +1143,7 @@ class PlaySession:
                     # The killer never admits the meeting took place: the same words an innocent
                     # host uses for a real no-show, or an excuse. A street witness can give the lie.
                     text += random.Random(f"appointment-lie-v1:{self.case.seed}").choice(
-                        (" J'ai attendu, mais personne n'est venu.", " Je n'y suis finalement pas allée, j'ai eu un empêchement."))
+                        (" J'ai attendu, mais personne n'est venu.", f" Je n'y suis finalement pas allé{e(self.case.life.people[person].name)}, j'ai eu un empêchement."))
                 else:
                     text += " J'ai attendu, mais personne n'est venu." if any(m.observer == person for m in self.case.crime.missed_appointments) else " On s'est retrouvés dehors pour parler."
             else:
@@ -1195,7 +1195,7 @@ class PlaySession:
             self.mistakes += 1
             self.cleared.add(person)
             self.journal.append({"id": "cleared:" + person, "kind": "accusation",
-                                 "text": f"Le commissaire a rejeté le dossier contre {name} : les charges ne tiennent pas. {name} est mis(e) hors de cause."})
+                                 "text": f"Le commissaire a rejeté le dossier contre {name} : les charges ne tiennent pas. {name} est mis{e(name)} hors de cause."})
             self._advance(self.MISTAKE_MINUTES, force=True)
             if self.finished:
                 return False, f"Le commissaire rejette le dossier contre {name}. Le temps vous a manqué : l'affaire est classée sans suite."
@@ -1210,7 +1210,7 @@ class PlaySession:
                                  ("victim_diary", "sans le dernier projet de la victime")) if key not in known]
         return True, ("Dossier établi : " + name + ".\n"
                       "Méthode : " + self.case.crime.method.label + ".\n"
-                      + (f"Un dossier retenu {', '.join(gaps)} : l'aveu a fait le reste.\n" if gaps else "")
+                      + (f"Dossier retenu {', '.join(gaps)} : le commissaire a tranché sur le reste.\n" if gaps else "")
                       + "Le contexte éclaire le geste, mais les liens et les griefs ne prouvaient pas à eux seuls la culpabilité.")
 
 

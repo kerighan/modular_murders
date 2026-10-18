@@ -142,7 +142,7 @@ def test_free_mode_accuses_at_own_risk_against_the_clock():
     with pytest.raises(ValueError):
         session.accuse(innocent)
     won, text = session.accuse(author)
-    assert won and session.finished and "aveu" in text  # nothing collected: the confession carried the file
+    assert won and session.finished and "tranché" in text  # nothing collected: the commissaire ruled on the rest
     strict = PlaySession(case)
     assert strict.accuse(author)[0] is False and not strict.finished  # the classic rules still refuse
 

@@ -1,7 +1,10 @@
 # Nexus City — APK solo hors ligne
 
-Version **0.54-causal** : `../builds/nexus-city-solo-debug-v54.apk`, moteur `causal-3d-v13`
-(sauvegardes conservées). Français relu : élisions et prépositions des lieux.
+Version **0.55-causal** : `../builds/nexus-city-solo-debug-v55.apk`, moteur `causal-3d-v13`
+(sauvegardes conservées). Accords de genre, un bouton par résident dans les colocations,
+élisions, résumé qui liste les suspects restants.
+
+Version 0.54 : moteur `causal-3d-v13` (sauvegardes conservées). Français relu : élisions et prépositions des lieux.
 
 Version 0.53 : moteur `causal-3d-v13` (sauvegardes conservées). On peut toujours sonner à une porte habitée, même sans point d'action.
 

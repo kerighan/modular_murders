@@ -22,3 +22,22 @@ def at(label):
     if label.startswith(("Ruelle ", "Impasse ", "Allée ")):
         return "dans la " + low
     return "à " + label
+
+
+FEMININE = frozenset(("Lina", "Salomé", "Ada", "Chloé", "Inès", "Nadia", "Tess"))
+
+
+def feminine(name):
+    return name in FEMININE
+
+
+def e(name):
+    """The feminine ending of a past participle or adjective: 'resté' + e(name)."""
+    return "e" if feminine(name) else ""
+
+
+def height(name, value):
+    """The height enum speaks of 'la personne'; a named man is 'plutôt grand'."""
+    if feminine(name):
+        return value
+    return value.replace("grande", "grand").replace("petite", "petit")

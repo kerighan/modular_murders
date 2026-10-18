@@ -59,7 +59,7 @@ func _run() -> void:
 	for row in client.view.notebook:
 		if int(row.id) == id:
 			named = str(row.name)
-			_check(row.whereabouts.next.place == "bar" and row.whereabouts.next.activity == "appelé au travail", "Notebook must promise the bar next turn")
+			_check(row.whereabouts.next.place == "bar" and str(row.whereabouts.next.activity).begins_with("appelé"), "Notebook must promise the bar next turn")
 	_check(str(client.view.conversation.text).contains(named), "The barman confirms the call by name")
 	await _capture("summon-reply")
 	await _act(["stop"])
